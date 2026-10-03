@@ -1,6 +1,7 @@
 # NEON BREACH
 
 **The contract ends when the signal dies.**
+<img width="1509" height="932" alt="Screenshot 2026-10-02 at 22 38 40" src="https://github.com/user-attachments/assets/0c564c68-eb2b-4f20-a39a-fd2f10c3d3ad" />
 
 A browser first-person orbital arena shooter with **solo practice against three bots** and **multiplayer for 2–4 human players**. One arena, one Pulse Rifle, one Phase Cell, and server-authoritative gameplay. Original procedural geometry, styling, and synthesized sounds; no external art or font downloads.
 
