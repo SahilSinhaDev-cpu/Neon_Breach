@@ -30,9 +30,10 @@ export function createStrongStore(name: string, options: { fetch?: typeof fetch;
     const signal = requestSignal ? AbortSignal.any([budget, requestSignal]) : budget;
     const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase();
     const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+    const conditionalWrite = method === 'PUT' && (headers.has('if-match') || headers.has('if-none-match'));
     // Reads and conditional writes can be retried without overwriting a newer
     // room. Keep every retry inside this invocation's total storage deadline.
-    const canRetry = method === 'GET' || method === 'HEAD' || (method === 'PUT' && (headers.has('if-match') || headers.has('if-none-match')));
+    const canRetry = method === 'GET' || method === 'HEAD' || conditionalWrite;
     for (let attempt = 0; attempt < 3; attempt++) {
       let stop: (() => void) | undefined;
       let retryAfterMs = 0;
@@ -44,7 +45,15 @@ export function createStrongStore(name: string, options: { fetch?: typeof fetch;
       });
       const response = await Promise.race([transport(input, { ...init, signal }), aborted]);
       const missingRead = response.status === 404 && ['GET', 'HEAD', 'DELETE'].includes(method);
-      const conflict = response.status === 412 && method === 'PUT' && (headers.has('if-match') || headers.has('if-none-match'));
+      // Hosted conditional writes can reject a concurrent operation with 409.
+      // The SDK recognizes only 412. Normalize that uncommitted write so the
+      // authority reloads fresh state and recomputes the entire action; never
+      // acknowledge it or blindly overwrite with the attempted room snapshot.
+      if (response.status === 409 && conditionalWrite) {
+        await response.body?.cancel();
+        return new Response(null, { status: 412 });
+      }
+      const conflict = response.status === 412 && conditionalWrite;
       if (response.ok || missingRead || conflict) return response;
       const retryHeader = response.headers.get('retry-after');
       retryAfterMs = retryHeader === null ? 0 : Number.isFinite(Number(retryHeader)) ? Math.max(0, Number(retryHeader) * 1000) : Math.max(0, Date.parse(retryHeader) - Date.now()) || 0;

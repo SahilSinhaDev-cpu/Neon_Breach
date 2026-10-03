@@ -46,6 +46,25 @@ test('unexpected 404 writes and 412 reads cannot be mistaken for success', async
   await assert.rejects(read.getWithMetadata('room', { type: 'json' }), error => error instanceof StorageError && error.status === 412);
 });
 
+test('HTTP 409 conditional-write conflicts return unmodified for authority recomputation', async () => {
+  for (const condition of [{ onlyIfNew: true }, { onlyIfMatch: 'previous' }]) {
+    let attempts = 0;
+    const store = createStrongStore('storage-tests', { fetch: async (_, options) => {
+      attempts++; const headers = new Headers(options?.headers);
+      assert.ok(headers.has('if-match') || headers.has('if-none-match'));
+      return new Response('concurrent write', { status: 409 });
+    } });
+    assert.deepEqual(await store.setJSON('room', {}, condition), { modified: false });
+    assert.equal(attempts, 1, 'reload before attempting a new room write');
+  }
+});
+
+test('HTTP 409 reads and unconditional writes remain storage errors', async () => {
+  const store = createStrongStore('storage-tests', { fetch: async () => new Response(null, { status: 409 }) });
+  await assert.rejects(store.get('room'), error => error instanceof StorageError && error.status === 409);
+  await assert.rejects(store.setJSON('room', {}), error => error instanceof StorageError && error.status === 409);
+});
+
 test('network failures have bounded conditional retries with no SDK retry delay', async () => {
   let requests = 0;
   const store = createStrongStore('storage-tests', { fetch: async () => { requests++; throw new Error('private backend address'); } });

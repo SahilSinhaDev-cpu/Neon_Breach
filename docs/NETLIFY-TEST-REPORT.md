@@ -1,6 +1,6 @@
 # Netlify recovery update — verification
 
-Release **2026-10-03-recovery-2**, tested on **3 October 2026**. The existing site already contains the previous update. This new release has not been published: authenticated access to the existing Netlify project's deployment controls is unavailable here.
+Release **2026-10-03-conflicts-3**, tested on **3 October 2026**. The live site now runs recovery-2. A new comparison measured 13 ms median locally versus 525 ms on Netlify and eleven upstream 409 responses in 50 live polls. This conflict-handling release is not yet verified on the live endpoint. See [the latency diagnosis](NETLIFY-LATENCY.md).
 
 ## Results
 
@@ -8,7 +8,7 @@ Release **2026-10-03-recovery-2**, tested on **3 October 2026**. The existing si
 | --- | --- | --- |
 | Existing live deployment | BUG REPRODUCED | Four HTTP 503 storage errors in 107 live polls from two isolated seats; both left afterward. `live-recheck.json` |
 | TypeScript and production build | PASS | Vite frontend and one officially packaged standard function |
-| Automated tests | PASS: 119, zero failures | Game rules, solo, art/audio/music, strong/CAS persistence, conditional retries, monotonic clocks, input leases, recovery classification/cancellation, hung requests and Retry-After control timeout |
+| Automated tests | PASS: 122, zero failures | Game rules, solo, art/audio/music, strong/CAS persistence, conditional retries, monotonic clocks, input leases, recovery classification/cancellation, hung requests and Retry-After control timeout |
 | Final packaged recovery browser | PASS: 5 checks | Two independent Chrome contexts; production frontend, extracted function module, 400 ms simulated RTT, injected 503s and delayed recovery acknowledgements |
 | Full contracts and replay | PASS: 14 checks | Three real 180-second matches; matching scores/winners, tied-score resolution and clean replay |
 | Delayed-network browser | PASS: 4 checks | 500 ms simulated RTT, authoritative movement, slow/offline leave and replaced-seat overlay |
@@ -46,7 +46,7 @@ The user chose three existing matches with replay, preserving each contract's in
 
 Both clients displayed matching scores and winners. Each replay returned both to a lobby with zero scores and 100 health. The browsers made 6,689 and 6,688 function requests with no WebSockets or page errors. Controls produced authoritative movement and firing; tests checked cover blocking, three-hit elimination, five-second respawn, one-second protection, natural 20-second Phase Cell spawn and four-second effect. Fixtures changed combat poses only, never scores, match duration or winner rules.
 
-The full-contract package differs from the final function only in the order of two seat-validation checks. `contract-package-comparison.json` records both module hashes and the exact diff. The final frontend additionally keeps its timeout active during provider backoff. These follow-up changes are checked by the final packaged recovery browser and automated tests; no combat, movement, scoring or replay rules changed afterward. `package-report.json` verifies the final clean build against the tested recovery artifact.
+The full-contract package differs from the final function in the release identifier, two seat-validation checks and conditional-write 409 handling. `contract-package-comparison.json` records both module hashes and the exact diff. Conditional PUT 409 now reloads/recomputes; integration testing confirms concurrent state survives. The final frontend additionally keeps its timeout active during provider backoff. These follow-up changes are checked by the final packaged recovery browser and automated tests; no combat, movement, scoring or replay rules changed afterward. `package-report.json` verifies the final clean build against the tested recovery artifact.
 
 ## Scope and remaining limits
 

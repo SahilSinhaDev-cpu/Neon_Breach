@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import type { Store } from '@netlify/blobs';
 import { handleGame } from '../netlify/lib/authority';
+import { createStrongStore } from '../netlify/lib/storage';
 import { HEARTBEAT_MS, type GameRequest, type HttpReply } from '../shared/http-protocol';
 import { RULES } from '../shared/world';
 import { blobFixture } from './netlify-fixture';
@@ -60,6 +61,28 @@ test('heartbeat-expired lobby seats recover without being mistaken for a competi
     const replaced = await game.call({ ...game.seats[0], client: randomUUID(), action: 'join', name: 'VEX' });
     assert.equal(replaced.ok, true);
     assert.equal((await game.action(0, 'poll')).errorCode, 'SEAT_REPLACED');
+  } finally { await game.fixture.close(); }
+});
+
+test('a hosted HTTP 409 write conflict reloads changed room state before acknowledging input', async () => {
+  const game = await duel();
+  try {
+    let conflicts = 0;
+    const store = createStrongStore('neon-breach-rooms-v1', { fetch: async (url, options) => {
+      const headers = new Headers(options?.headers);
+      if (options?.method?.toUpperCase() === 'PUT' && headers.has('if-match') && conflicts++ === 0) {
+        await game.fixture.edit(game.code, data => { data.room.players[1].score = 2; });
+        return new Response(null, { status: 409 });
+      }
+      return fetch(url, options);
+    } });
+    game.now += 100;
+    const reply = await game.action(0, 'poll', { input: { seq: 1, life: 1, mx: 0, my: 1, yaw: 0, pitch: 0, fire: false, dash: false } }, store);
+    assert.equal(reply.ok, true);
+    assert.equal(reply.snapshot!.players[1].score, 2, 'Concurrent committed state must survive the retry');
+    assert.equal(reply.snapshot!.players[0].ack, 1);
+    assert.equal(conflicts, 2);
+    assert.equal((await game.fixture.read(game.code)).room.players[1].score, 2);
   } finally { await game.fixture.close(); }
 });
 

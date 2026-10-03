@@ -1,6 +1,6 @@
 # Netlify recovery update — 3 October 2026
 
-Release: **2026-10-03-recovery-2**. The live site already contained the previous update (`index-CmmnM_3A.js`). This is a new correction, not a request to upload the same build again.
+Release: **2026-10-03-conflicts-3**. Recovery-2 is now deployed. The newest correction treats concurrent conditional-write HTTP 409 as a conflict requiring a fresh read and full recomputation. A live comparison measured 525 ms median cloud RTT and eleven upstream 409 errors in 50 polls; see [the latency diagnosis](NETLIFY-LATENCY.md). The live site already contained the previous update (`index-CmmnM_3A.js`). This is a new correction, not a request to upload the same build again.
 
 Two independent test seats reproduced **four HTTP 503 storage errors in 107 live polls** at https://neonbreach977.netlify.app. Most round trips were about 410–550 ms; the failures took 433–502 ms. Both seats explicitly left afterward. The backend's underlying storage status was not exposed by that release, so its exact upstream cause is not established. The probe found no backwards server snapshots. See `artifacts/netlify/live-recheck.json`.
 
@@ -18,11 +18,11 @@ This release corrects them:
 
 The previous update's fixes remain: bounded latency-aware collision prediction, monotonic authority time across CAS retries, checked persistence with ETags, action deduplication, and a shared async context tracker for warm function invocations.
 
-Current evidence is recorded in [the verification report](NETLIFY-TEST-REPORT.md) and `artifacts/netlify`. Tests use temporary servers that close afterward; no local preview is left running.
+Current evidence is recorded in [the verification report](NETLIFY-TEST-REPORT.md) and `artifacts/netlify`. Tests use temporary servers that close afterward; the local game is running at the user's request.
 
 ## Apply the update
 
-This new release has not been deployed: no authenticated access to the existing project's Netlify deployment controls is available here. Extract the regenerated `netlify-ready-game.zip`, sign in to the **existing neonbreach977 project**, and drop the complete extracted folder under **Production deploys**. Keep the root `netlify.toml`, manifests and `netlify` source directory together. Wait for publication, reload the game, and run the README's two-device checklist. The new frontend asset is `index-B5Ms2gNK.js`; the function's release header is `2026-10-03-recovery-2`.
+This new release has not been deployed: no authenticated access to the existing project's Netlify deployment controls is available here. Extract the regenerated `netlify-ready-game.zip`, sign in to the **existing neonbreach977 project**, and drop the complete extracted folder under **Production deploys**. Keep the root `netlify.toml`, manifests and `netlify` source directory together. Wait for publication, reload the game, and run the README's two-device checklist. The new frontend asset is `index-B5Ms2gNK.js`; the function's release header is `2026-10-03-conflicts-3`.
 
 Signed-in source-project builds and updates through the production drop zone are described in [Netlify’s Drop documentation](https://docs.netlify.com/start/quickstarts/netlify-drop-quickstart/). No GitHub, terminal commands, user-defined environment variables, API keys or manual database setup are required.
 
