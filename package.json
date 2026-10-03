@@ -7,20 +7,27 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "tsx scripts/local-preview.ts",
-    "build": "tsc --noEmit && vite build && node scripts/package-function.mjs",
-    "start": "tsx scripts/local-preview.ts --production",
+    "dev": "tsx server/index.ts",
+    "build": "tsc --noEmit && vite build && node scripts/build-server.mjs && node scripts/package-function.mjs",
+    "start": "node dist/server/index.mjs",
     "test": "node --import tsx --test tests/*.test.ts",
     "test:browser": "tsx tests/netlify-browser.ts",
     "check": "tsc --noEmit",
     "test:netlify": "tsx tests/netlify.test.ts",
     "package:netlify": "python3 scripts/package-netlify.py",
-    "test:touch": "tsx tests/netlify-touch.ts"
+    "test:touch": "tsx tests/netlify-touch.ts",
+    "dev:http": "tsx scripts/local-preview.ts",
+    "test:realtime": "tsx tests/realtime-browser.ts",
+    "test:realtime-touch": "tsx tests/realtime-touch.ts",
+    "test:realtime-split": "tsx tests/realtime-split-browser.ts"
   },
   "dependencies": {
     "@netlify/blobs": "^11.1.3",
     "@netlify/functions": "^6.0.2",
-    "three": "^0.180.0"
+    "three": "^0.180.0",
+    "express": "^5.1.0",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
     "@netlify/zip-it-and-ship-it": "^16.2.3",
@@ -31,9 +38,6 @@
     "playwright": "^1.55.1",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",
-    "vite": "^7.1.7",
-    "express": "^5.1.0",
-    "socket.io": "^4.8.1",
-    "socket.io-client": "^4.8.1"
+    "vite": "^7.1.7"
   }
 }

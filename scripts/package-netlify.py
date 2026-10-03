@@ -7,8 +7,8 @@ import json
 root = Path(__file__).resolve().parent.parent
 output = root / 'netlify-ready-game.zip'
 excluded_dirs = {'.git', '.netlify', 'node_modules', '__pycache__', '.cache', '.vite', '.codex', '.agents'}
-excluded_files = {'netlify-ready-game.zip', 'neon-breach-source.tar.gz', '.DS_Store', '.dockerignore'}
-required = {'netlify.toml', 'package.json', 'package-lock.json', 'index.html', 'netlify/functions/game.ts', 'netlify/lib/authority.ts', 'client/connection.ts', 'dist/client/index.html', 'dist/functions/game.zip'}
+excluded_files = {'netlify-ready-game.zip', 'neon-breach-source.tar.gz', '.DS_Store'}
+required = {'netlify.toml', 'render.yaml', 'Dockerfile', '.dockerignore', 'package.json', 'package-lock.json', 'index.html', 'netlify/functions/game.ts', 'netlify/lib/authority.ts', 'client/connection.ts', 'client/realtime-connection.ts', 'client/http-connection.ts', 'server/app.ts', 'server/index.ts', 'public/game-config.json', 'dist/client/index.html', 'dist/functions/game.zip', 'dist/server/index.mjs'}
 with ZipFile(output, 'w', ZIP_DEFLATED, compresslevel=6) as archive:
     for path in sorted(root.rglob('*')):
         relative = path.relative_to(root)
@@ -16,10 +16,10 @@ with ZipFile(output, 'w', ZIP_DEFLATED, compresslevel=6) as archive:
             continue
         if path.name in excluded_files or path.name.endswith(('.log', '.tsbuildinfo')) or path.name.startswith('.env'):
             continue
-        # Ship current Netlify acceptance evidence, not 78 MB of historical captures.
-        if relative.parts[0] == 'artifacts' and (len(relative.parts) < 3 or relative.parts[1] != 'netlify' or 'failure' in path.name):
+        # Ship relevant acceptance evidence, not historical captures from art work.
+        if relative.parts[0] == 'artifacts' and (len(relative.parts) < 3 or relative.parts[1] not in {'netlify', 'realtime'} or 'failure' in path.name):
             continue
-        if relative.parts[0] == 'dist' and relative.parts[1] not in {'client', 'functions'}:
+        if relative.parts[0] == 'dist' and relative.parts[1] not in {'client', 'functions', 'server'}:
             continue
         archive.write(path, relative.as_posix())
 with ZipFile(output) as archive:

@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: neon-breach-realtime
+    runtime: node
+    region: singapore
+    plan: free
+    numInstances: 1
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeployTrigger: "off"

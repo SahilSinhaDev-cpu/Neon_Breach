@@ -14,13 +14,23 @@ The original **Signal / Inheritance** score connects a quiet lobby, match introd
 
 The arena is **The Shattered Relay**: a damaged orbital communications chamber with a suspended relay, mirrored power-bank cover, blue and amber service lanes, an armored planet viewport, a scarred blast door, and a broken uplink display. Shared server/client geometry keeps the added solid structures consistent with movement and shots. See [the environment layout, rendering tradeoffs, and live-match evidence](docs/ENVIRONMENT.md).
 
-## Publish by drag and drop
+## Real-time hosting
 
-Download **netlify-ready-game.zip**, sign in to [Netlify Drop](https://app.netlify.com/drop), and drop the complete ZIP. Wait for the build and deployment, then open the assigned HTTPS URL. Netlify builds the source project using the root `netlify.toml` and installs the lockfile dependencies automatically. Do not drop just `index.html` or `dist/client`: the complete source ZIP supplies the multiplayer function.
+This release restores a **persistent Node/Socket.IO game server**, while the website can remain on Netlify. Live inputs no longer read and replace a Blobs object. The authoritative server simulates at 60 Hz, pushes snapshots at approximately 20 Hz, and receives input at approximately 30 Hz. Rendering, game rules, touch controls, art and sounds are preserved.
 
-No GitHub repository, Terminal commands, user-configured environment variables, API keys, or database setup are needed. Netlify provisions Blobs and supplies its runtime credentials. You need to be signed in for source-project builds, as described in [Netlify’s Drop documentation](https://docs.netlify.com/start/quickstarts/netlify-drop-quickstart/). If your team makes new sites private, use the dashboard visibility control so friends can open the URL.
+**The public Netlify site has not yet been switched to this transport.** `public/game-config.json` deliberately retains HTTP compatibility until there is an actual verified backend URL. Uploading this ZIP alone will not solve hosted multiplayer lag. Local play and direct backend-hosted play already select WebSockets automatically.
 
-The sole deployed backend is the standard **`netlify/functions/game.ts`**. The frontend calls **`/.netlify/functions/game`** directly. There is no custom function path or game redirect. Helpers are in `netlify/lib`, `server`, and `shared`, outside the function entry directory. There is no always-on backend in this deployment.
+The measured old Netlify responses had a 525 ms median, compared with 13 ms locally. See [the diagnosis](docs/NETLIFY-LATENCY.md). A persistent game server removes those per-input function/storage operations; internet latency still depends on server region and players' networks.
+
+[Deploy the prepared backend to Render](https://render.com/deploy?repo=https://github.com/SahilSinhaDev-cpu/Neon_Breach)
+
+1. Open that link, sign in, review the **one free Node web service in Singapore**, and deploy. The root `render.yaml` supplies build, start and health-check settings. No database, API key, or user-defined environment variable is required.
+2. Send the actual assigned HTTPS service URL back to the developer. The developer verifies its health and WebSocket room flow, updates the frontend configuration, and supplies the final Netlify upload. There is no placeholder hostname to copy.
+3. Publish the rebuilt frontend to your existing Netlify project, then run the two-device checklist below.
+
+Render's [free service](https://render.com/docs/free/) sleeps after 15 minutes without inbound traffic and can take about a minute to wake. It is a testing/hobby deployment, not an always-on production guarantee. A paid instance removes this idle-sleep limit; no paid service is selected here. Use one instance: rooms are in its memory. Deployments and restarts end its rooms. See [the real-time protocol and deployment details](docs/REALTIME.md).
+
+The bundled Netlify Function is retained for compatibility with the existing website. In that mode the frontend still calls `/.netlify/functions/game` directly, with strong reads and conditional Blobs writes. Helpers remain outside `netlify/functions`; there is no `/api/game` redirect. The ZIP contains root-level source, configuration, lockfile, built frontend, compiled server and packaged function, with no dependencies, caches, secrets or logs. Netlify can rebuild this source ZIP; the **second backend deployment remains necessary for real-time play**.
 
 ## Play
 
@@ -33,7 +43,7 @@ The sole deployed backend is the standard **`netlify/functions/game.ts`**. The f
 - **Winner:** first to ten eliminations, otherwise the most at 180 seconds. Ties favor the earlier achievement of the tied score, then join order. Last connected human wins in multiplayer.
 - **Replay:** host chooses Return to lobby; all connected players reset, then host starts a new match. There is no series or aggregate winner: each contract has its own score and winner.
 
-The lobby shows all seven rules. Lobby refresh recovers the same seat with its private session token, preserving it through transient storage failures. An expired lobby heartbeat can recover automatically; a lease replaced by another tab cannot. Refresh during a match cannot rejoin it. Explicit leave is immediate; silent connection loss is detected after eight seconds without a successful poll, on the next room request. A server-observed input watchdog adapts between 350 ms and two seconds to the connection’s accepted input cadence, then stops stale movement and held fire. Clients cannot choose this allowance.
+The lobby shows all seven rules. In real-time mode, lobby refresh or a brief dropped connection recovers the same private seat for up to 30 seconds. Duplicate connected seats are rejected. Disconnecting during a match removes that player; reconnecting displays a clear Return home overlay. Explicit leave is immediate; silent connection loss is detected by the WebSocket heartbeat (2.5-second ping interval and 5-second timeout). Stale movement and held fire stop after 350 ms without accepted input. Clients cannot choose positions, damage, deadlines or scores.
 
 ## Two-device check after upload
 
@@ -47,29 +57,32 @@ The lobby shows all seven rules. Lobby refresh recovers the same seat with its p
 
 ## Architecture and limits
 
-The function loads one room blob with **strong consistency**, advances the shared 60 Hz simulation up to the current server time, applies validated input/actions, and saves the complete state using **`onlyIfMatch`**. Room creation uses **`onlyIfNew`** and retries collisions. Conflicts reload and recompute; no client-authored damage, scores, positions or timestamps are accepted. Missing read or write ETags fail closed. Transient storage reads/conditional writes retry at most three times with unchanged conditions, inside a four-second total I/O budget. Concurrent retries use a fresh, monotonic server clock. Bot brains, deadlines, connection leases, event cursors and action deduplication persist across invocations.
+`server/app.ts` is the production Express/Socket.IO server. It uses the shared rooms, bots, match logic and geometry rather than a separate set of game rules. Positions, hitscan collision, cooldowns, respawns, Phase Cell, match clocks and winners remain authoritative. Time is wall-clock based with monotonic elapsed time; each process has a stream epoch, and each room has sequenced snapshots/events. Remote interpolation and bounded local correction remain in the renderer. There is no server-side rewind.
 
-HTTP requests replace WebSockets. Active clients keep one request in flight and poll with an 80 ms minimum cycle including request latency; lobby clients use a 400 ms minimum cycle. Slow active responses trigger the next poll immediately. Visual rendering/prediction remains continuous, with bounded latency-aware prediction and collision checks. Respawn and dash discontinuities reset the remote interpolation history. This cannot promise the old WebSocket update rate or latency, especially on cold starts or distant networks. There is no server-side rewind. Effects use bounded sequenced events; missed old effects do not alter scores or health. Blobs is optimized for reads and infrequent writes; this FPS workload depends on platform latency and service limits. Each room is a single conditional-write unit, not a transactional multi-key database.
+Room/action acknowledgements use request IDs and a bounded deduplication cache. A retry on the same live socket cannot duplicate creation or replay. A changed connection cannot install an old acknowledgement. Inputs are volatile and are never buffered for an offline player. Room codes and seat tokens remain private to the room flow; callsigns are validated and displayed as text. WebSocket origins are restricted to the current backend origin and `https://neonbreach977.netlify.app`.
 
-Brief transport errors preserve held movement and show UPLINK RETRYING. After 2.2 seconds without a successful reply, a reconnect overlay suspends controls. Movement resumes with held keys when the same seat reconnects; releasing keys, leaving, losing focus, or unlocking the pointer still clears controls. The HUD clock never moves backward because of a delayed snapshot.
+This is a single-instance deployment. Live rooms are intentionally ephemeral. Empty rooms and disconnected lobby reservations expire after 30 seconds; disconnected players cannot rejoin an active match. Horizontal scaling, cross-instance room routing, seamless restart recovery, and lag compensation are not implemented. Server load at large player counts has not been benchmarked. A phone's graphics performance and an actual hosted game still need verification.
 
-There are no background game timers. Match clocks and deadlines progress when a room is requested. Eight-second heartbeat disconnects, lobby reservation cleanup and room expiration are evaluated on access. Empty rooms expire logically after 30 seconds; abandoned rooms after 15 minutes. Expired blob objects remain stored; this implementation does not pretend that Netlify Blobs supplies automatic TTL deletion. See [the protocol](docs/PROTOCOL.md) and [current test evidence](docs/NETLIFY-TEST-REPORT.md).
+## Developer checks
+
+Node 22.12 or newer is required. For developers, `npm ci`, `npm run build`, then `npm run dev` runs the built game with the real-time server at `http://localhost:3000`. `npm start` runs its compiled production entry. Rebuild after frontend edits. `npm run dev:http` runs the retained Netlify compatibility preview.
+
+- `npm test`: automated game, transport, validation, audio and storage tests.
+- `npm run test:realtime`: two independent Chrome clients with 200 ms added RTT; three genuine 180-second contracts and replay. It uses compiled production assets/server. Tests control poses only, not scores or deadlines.
+- `npm run test:realtime-touch`: Chrome touch emulation, authoritative touch movement/aim/fire/dash and solo bots.
+- `npm run test:realtime-split`: distinct frontend/backend origins; lobby recovery, active disconnect and the next lobby.
+- `npm run test:browser` / `npm run test:touch`: retained Function/Blobs compatibility tests.
+- `npm run package:netlify`: creates `netlify-ready-game.zip` with complete source and release artifacts.
+
+Browser automation currently uses the installed macOS Chrome path. It is not a physical phone or two humans. See [the new verification report](docs/REALTIME-TEST-REPORT.md) and `artifacts/realtime/`. Earlier `docs/NETLIFY-TEST-REPORT.md` and `docs/TEST-REPORT.md` document previous transports; they are historical evidence, not proof that this new backend is live.
 
 ## Project contents
 
-- `client/`, `index.html`, `public/`: original art, layout, audio/music and gameplay UI; HTTP transport and latency-aware motion prediction.
-- `netlify/functions/game.ts`: the only deployed function entry.
-- `netlify/lib/authority.ts`, `storage.ts`: strong reads, confirmed conditional persistence, request validation, storage timeout/error handling and room lifecycle.
-- `server/game.ts`, `server/bots.ts`, `shared/`: reusable authoritative rules, bot decisions and collision geometry.
-- `netlify.toml`, package manifests: automatic frontend/function build configuration.
-- `dist/client`, `dist/functions/game.zip`: verified production assets and the officially packaged function, included for inspection. Netlify rebuilds the source on upload.
-- `tests/netlify*.ts`: current Blobs, production-browser, touch and solo verification. `scripts/` contains developer-only build/packaging/preview tools, not deployment prerequisites for you.
-- `tests/legacy/` and older visual browser suites: historical Socket.IO test fixtures retained as source/evidence; they are not deployed or part of current acceptance. Their old live-network branches target the previous transport.
-
-## Verification status
-
-See `docs/NETLIFY-TEST-REPORT.md` and `artifacts/netlify/`. The older `docs/TEST-REPORT.md` records the pre-migration WebSocket build; it is historical, not evidence of hosted Netlify behavior. Automated browser contexts are independent test clients, not two human players on physical devices.
-
-The live site at https://neonbreach977.netlify.app now runs **2026-10-03-recovery-2**. A fresh two-seat comparison measured median active response times of **13 ms locally and 525 ms on Netlify**, with eleven upstream HTTP 409 conflicts surfaced as 503 errors in 50 live polls. Release **2026-10-03-conflicts-3** adds correct conditional-write conflict recomputation. This correction does not remove the ordinary cloud round-trip delay. See [the measured latency diagnosis and proposed real-time backend](docs/NETLIFY-LATENCY.md).
-
-The new conflict correction is not yet verified on the cloud endpoint. Extract `netlify-ready-game.zip` and upload the complete folder under the existing project's **Production deploys**, then perform the two-device checklist. The local game is running at the user's request; temporary QA servers close after testing. See [the bugfix notes](docs/NETLIFY-BUGFIX.md).
+- `client/`, `index.html`, `public/`: original UI, art, audio, settings, HTTP compatibility and real-time transports.
+- `server/app.ts`, `server/index.ts`, `server/game.ts`, `server/bots.ts`, `shared/`: persistent authoritative runtime, shared rules, bots and collision geometry.
+- `render.yaml`, `Dockerfile`, `.dockerignore`: backend deployment settings and an optional container build.
+- `netlify.toml`, `public/game-config.json`: frontend build and runtime transport selection.
+- `netlify/functions/game.ts`, `netlify/lib/`: retained standard Function/Blobs backend for the staged switch.
+- `dist/client`, `dist/server`, `dist/functions/game.zip`: production artifacts in the ZIP. The hosts rebuild from source.
+- `scripts/configure-realtime.mjs`: developer release tool; verifies a real HTTPS backend, creates and cleans up a test room, then configures Netlify. It is not a command the player must run.
+- `tests/realtime*.ts`: current persistent-server acceptance. Older visual suites and `tests/legacy/` remain historical fixtures.

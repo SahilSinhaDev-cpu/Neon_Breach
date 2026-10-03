@@ -12,6 +12,11 @@
     Cache-Control = "no-store"
 
 [[headers]]
+  for = "/game-config.json"
+  [headers.values]
+    Cache-Control = "no-store"
+
+[[headers]]
   for = "/*"
   [headers.values]
     X-Content-Type-Options = "nosniff"

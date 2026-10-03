@@ -31,8 +31,8 @@ export class Room {
   events: GameEvent[] = [];
   private brains = new Map<string, BotBrain>();
   constructor(public code: string, public readonly mode: RoomMode = 'multiplayer') {}
-  // A complete, JSON-safe authority snapshot. Runtime maps never live in a
-  // function instance between requests; bot decisions survive cold starts too.
+  // Complete JSON-safe state for the retained Function backend and QA. Its
+  // bot decisions survive cold starts; the live WebSocket runtime uses maps.
   serialize() {
     return { ...this.snapshot(0), players: [...this.players.values()].map(p => ({ ...p, lastFire: Number.isFinite(p.lastFire) ? p.lastFire : null })), emptyAt: this.emptyAt, order: this.order, brains: [...this.brains] };
   }

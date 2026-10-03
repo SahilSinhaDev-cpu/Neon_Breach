@@ -1,5 +1,5 @@
-// Developer-only HTTP/static adapter. The deployed application has no process,
-// WebSocket server, simulation interval, or local filesystem persistence.
+// Developer-only adapter for the retained Function/Blobs compatibility mode.
+// Its deployed function has no continuous process or filesystem persistence.
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';

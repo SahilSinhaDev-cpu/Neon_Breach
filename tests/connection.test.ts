@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { GameConnection } from '../client/connection';
+import { GameConnection } from '../client/http-connection';
 import { GAME_ENDPOINT, type GameRequest, type HttpReply } from '../shared/http-protocol';
 import type { Input, Snapshot } from '../shared/protocol';
 
