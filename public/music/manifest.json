@@ -1,0 +1,133 @@
+{
+  "title": "Signal / Inheritance",
+  "authorship": "Original algorithmic composition and additive synthesis authored for Neon Breach by the coding assistant. No sampled recordings, reference-track input, soundfonts, lyrics, or third-party music assets. No human composer or listening review claimed.",
+  "motif": {
+    "midi": [
+      50,
+      57,
+      58,
+      52,
+      55,
+      53,
+      50
+    ],
+    "beatOffsets": [
+      0,
+      2.5,
+      4,
+      6,
+      7.5,
+      9,
+      12
+    ],
+    "beatLengths": [
+      2.25,
+      1.2,
+      1.6,
+      1.2,
+      1.2,
+      2.4,
+      2.7
+    ],
+    "tempo": 80,
+    "meter": "5/4"
+  },
+  "cues": {
+    "lobby": {
+      "seconds": 60,
+      "loop": true,
+      "sampleRate": 32000,
+      "frames": 1920000,
+      "peak": 0.3779296875,
+      "rms": 0.0729999958218084,
+      "monoEnergyRatio": 0.9944007421827452,
+      "boundaryStep": 0.000732421875,
+      "bytes": 1220375,
+      "sha256": "3ee0b3e49a6ae4a994ae3640ca1aac19d58591288bcd423b5a0bfb9d6f610c5d"
+    },
+    "combat": {
+      "seconds": 30,
+      "loop": true,
+      "sampleRate": 32000,
+      "frames": 960000,
+      "peak": 0.280487060546875,
+      "rms": 0.07199998799715583,
+      "monoEnergyRatio": 0.9930167959644098,
+      "boundaryStep": 0.003936767578125,
+      "bytes": 620187,
+      "sha256": "aadd5e19f0d02280b4814d59f077644b85fd3f28a6d6390a799827bcd9d3cf98"
+    },
+    "intensity": {
+      "seconds": 30,
+      "loop": true,
+      "sampleRate": 32000,
+      "frames": 960000,
+      "peak": 0.234649658203125,
+      "rms": 0.047000006427473595,
+      "monoEnergyRatio": 0.9985586574965241,
+      "boundaryStep": 6.103515625e-05,
+      "bytes": 603178,
+      "sha256": "23bb795c3b3bd97e80b7678d30144c5ba9ae3ed9b3112151727881d4c1261a7d"
+    },
+    "final": {
+      "seconds": 30,
+      "loop": true,
+      "sampleRate": 32000,
+      "frames": 960000,
+      "peak": 0.26947021484375,
+      "rms": 0.08299999627654434,
+      "monoEnergyRatio": 0.9975428546665223,
+      "boundaryStep": 0.002288818359375,
+      "bytes": 785993,
+      "sha256": "6fb043cb5aaa5f7d7e23314cc642bfbed5f6a00642a99999bff5890a2138d51f"
+    },
+    "start": {
+      "seconds": 7.5,
+      "loop": false,
+      "sampleRate": 32000,
+      "frames": 240000,
+      "peak": 0.382049560546875,
+      "rms": 0.08800001565226044,
+      "monoEnergyRatio": 0.9990653511222753,
+      "boundaryStep": 0.0,
+      "bytes": 149664,
+      "sha256": "5aed80efa0e2eaa45cdb2c9c90183d7402a30b693ca92bce4e3dc796fd3fd454"
+    },
+    "victory": {
+      "seconds": 7.5,
+      "loop": false,
+      "sampleRate": 32000,
+      "frames": 240000,
+      "peak": 0.330413818359375,
+      "rms": 0.1049999976528823,
+      "monoEnergyRatio": 0.9989086151066641,
+      "boundaryStep": 0.0,
+      "bytes": 172546,
+      "sha256": "1ba0d7380d5092b1d01f1883499082d1d0d83b510573494f861d09edd56c38d2"
+    },
+    "defeat": {
+      "seconds": 5,
+      "loop": false,
+      "sampleRate": 32000,
+      "frames": 160000,
+      "peak": 0.2652587890625,
+      "rms": 0.07499997052297504,
+      "monoEnergyRatio": 1.0,
+      "boundaryStep": 0.0,
+      "bytes": 53120,
+      "sha256": "77dad5eb550dc13a85093ce3dbaa418bfc367cbb23f49c479e4020dbf9490685"
+    },
+    "shimmer": {
+      "seconds": 2.25,
+      "loop": false,
+      "sampleRate": 32000,
+      "frames": 72000,
+      "peak": 0.227081298828125,
+      "rms": 0.04299994451114673,
+      "monoEnergyRatio": 1.0,
+      "boundaryStep": 0.0,
+      "bytes": 26604,
+      "sha256": "bdb800fcd079b8ffec8ad2df5ac6871402def9a46d58e71f9f4101e14d3234f6"
+    }
+  }
+}
