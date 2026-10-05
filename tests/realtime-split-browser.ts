@@ -26,7 +26,7 @@ try {
   await Promise.all([a, b].map(p => p.locator('#landing-connection').filter({ hasText: 'STATION ONLINE' }).waitFor()));
   await a.locator('#callsign').fill('SPLITVEX'); await a.locator('#create').click(); await a.locator('#lobby').waitFor({ state: 'visible' });
   const code = (await a.locator('#lobby-code').textContent())!;
-  await b.locator('#callsign').fill('SPLITNYX'); await b.locator('#room-code').fill(code); await b.locator('#join').click(); await b.locator('#lobby').waitFor({ state: 'visible' });
+  await b.locator('#callsign').fill('SPLITNYX'); await b.locator('#join-open').click(); await b.locator('#room-code').fill(code); await b.locator('#join').click(); await b.locator('#lobby').waitFor({ state: 'visible' });
   const room = server.rooms.rooms.get(code)!, player = [...room.players.values()].find(p => p.name === 'SPLITNYX')!;
   check('Independent frontend origin selects the configured backend; two browsers join the same room');
   server.io.sockets.sockets.get(player.socketId!)!.conn.close();
@@ -39,11 +39,11 @@ try {
   await a.locator('#results').waitFor({ state: 'visible' }); assert.equal(await a.locator('#winner').textContent(), 'SPLITVEX');
   await b.locator('#connection-message').filter({ hasText: 'Your match seat disconnected' }).waitFor();
   assert.equal(room.players.get(player.id)?.connected, false);
-  await b.locator('#connection-home').click(); await b.locator('#landing').waitFor({ state: 'visible' }); await pause(300);
+  await b.locator('#connection-home').click(); await b.locator('#confirm-accept').click(); await b.locator('#landing').waitFor({ state: 'visible' }); await pause(300);
   assert.equal(await b.locator('#hud').isVisible(), false);
-  check('Active disconnect awards the remaining player; recovered transport shows Return home instead of reviving the old match seat');
+  check('Active disconnect awards the remaining player; recovered transport shows confirmed Return to Landing instead of reviving the old match seat');
   await a.locator('#replay').click(); await a.locator('#lobby').waitFor({ state: 'visible' });
-  await b.locator('#room-code').fill(code); await b.locator('#join').click(); await b.locator('#lobby').waitFor({ state: 'visible' });
+  await b.locator('#join-open').click(); await b.locator('#room-code').fill(code); await b.locator('#join').click(); await b.locator('#lobby').waitFor({ state: 'visible' });
   assert.equal(room.humans().length, 2); assert.equal(room.phase, 'lobby');
   check('Disconnected operator can join the clean next lobby');
   assert.equal(calls, 0); assert.deepEqual(errors, []);

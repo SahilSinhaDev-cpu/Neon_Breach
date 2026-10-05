@@ -6,6 +6,7 @@ import type { GameEvent, Input, Snapshot } from '../shared/protocol';
 export class GameConnection {
   connected = false;
   sample: (() => Input | null) | null = null;
+  canAct: () => boolean = () => true;
   onLatency: ((ms: number) => void) | null = null;
   private listeners = new Map<string, ((value?: any) => void)[]>();
   private client = crypto.randomUUID();
@@ -87,9 +88,9 @@ export class GameConnection {
   async request(event: string, value: any): Promise<HttpReply> {
     const leaving = event !== 'room' && value === 'leave';
     const oldSeat = this.seat;
-    // Returning home must detach locally even if the leave request is lost.
-    // In-flight snapshots from this seat can no longer reopen the old screen.
-    if (leaving || event === 'room') this.detach();
+    // Keep polling the actual seat until a leave is acknowledged. A failed
+    // action cannot make the client pretend it has left a live match.
+    if (event === 'room' || leaving && !oldSeat) this.detach();
     const generation = this.generation;
     const task = this.queue.then(async () => {
       this.busy = true;
@@ -103,7 +104,7 @@ export class GameConnection {
         // Start/replay have server-side request IDs, so a lost acknowledgement
         // can be retried without applying the action twice. Room creation does
         // not have that guarantee and must never be retried automatically.
-        if (!reply.ok && retryable && !this.closed && generation === this.generation && (value === 'start' || value === 'replay')) {
+        if (!reply.ok && retryable && !this.closed && generation === this.generation && ['start', 'replay', 'return-lobby', 'leave'].includes(value)) {
           await this.delay(220);
           if (!this.closed && generation === this.generation) ({ reply } = await this.send(packet));
         }
@@ -118,7 +119,8 @@ export class GameConnection {
         if (reply.ok && event === 'room' && reply.snapshot && reply.token && reply.id) {
           this.seat = { code: reply.snapshot.code, token: reply.token, client: this.client }; this.playerId = reply.id; this.cursor = reply.cursor ?? 0; this.lastSnapshot = reply.snapshot;
         }
-        if (reply.ok && event !== 'room' && !leaving) this.accept(reply);
+        if (reply.ok && leaving) this.detach();
+        else if (reply.ok && event !== 'room') this.accept(reply);
         return reply;
       } finally { this.busy = false; }
     });
@@ -139,6 +141,7 @@ export class GameConnection {
   }
   close() {
     this.closed = true; this.connected = false; this.activeRequest?.abort(); this.clearRecoveryWatchdog();
+    this.detach();
     for (const [timer, wake] of this.delays) { clearTimeout(timer); wake(); }
     this.delays.clear();
   }
@@ -157,8 +160,13 @@ export class GameConnection {
           try {
             if (!this.seat) { await this.send(); return; }
             const generation = this.generation;
-            const input = this.lastSnapshot?.phase === 'playing' ? this.sample?.() : null;
+            const player = this.lastSnapshot?.players.find(p => p.id === this.playerId);
+            // Waiting seats still poll for snapshots/heartbeats, but never
+            // sample match input. A refreshed waiting camera has no live life
+            // generation yet; sending life 0 would reject the entire poll.
+            const input = this.lastSnapshot?.phase === 'playing' && player?.connected && !player.inLobby ? this.sample?.() : null;
             if (input) {
+              if (!this.canAct()) { this.pendingDash = null; input.mx = 0; input.my = 0; input.fire = false; input.dash = false; }
               if (input.dash) this.pendingDash = { life: input.life, expires: performance.now() + Math.max(350, Math.min(2000, this.roundTrip * 2)) };
               if (this.pendingDash && (this.pendingDash.life !== input.life || this.pendingDash.expires < performance.now())) this.pendingDash = null;
               if (this.pendingDash) input.dash = true;
@@ -168,7 +176,7 @@ export class GameConnection {
             if (reply.ok) {
               if (input?.dash && (reply.snapshot?.players.find(p => p.id === this.playerId)?.ack ?? -1) >= input.seq) this.pendingDash = null;
               this.accept(reply);
-            } else if (reply.errorCode === 'SEAT_DISCONNECTED' && this.lastSnapshot?.phase === 'lobby') {
+            } else if (reply.errorCode === 'SEAT_DISCONNECTED' && (this.lastSnapshot?.phase === 'lobby' || this.lastSnapshot?.players.find(p => p.id === this.playerId)?.inLobby)) {
               this.detach(); this.emit('lobby_recover');
             } else if (reply.error?.includes('seat') || reply.error?.includes('expired') || reply.error?.includes('not found')) { this.detach(); this.emit('seat_error', reply.error); }
           } finally { this.busy = false; }
@@ -176,7 +184,8 @@ export class GameConnection {
         this.queue = work.catch(() => {}); await work;
       }
       if (!this.closed) {
-        const interval = !this.connected ? 700 : this.seat && this.lastSnapshot?.phase === 'playing' ? 80 : 400;
+        const player = this.lastSnapshot?.players.find(p => p.id === this.playerId);
+        const interval = !this.connected ? 700 : this.seat && this.lastSnapshot?.phase === 'playing' && !player?.inLobby ? 80 : 400;
         // Network time is already part of the interval; do not add an extra
         // 80 ms after every slow response while the operator is moving.
         await this.delay(Math.max(0, this.backoffUntil - performance.now(), interval - (performance.now() - cycleStart)));

@@ -5,6 +5,7 @@ import { INPUT_INTERVAL_MS, REALTIME_VERSION, type SnapshotPacket, type EventPac
 export class RealtimeConnection {
   connected = false;
   sample: (() => Input | null) | null = null;
+  canAct: () => boolean = () => true;
   onLatency: ((ms: number) => void) | null = null;
   private socket: Socket;
   private listeners = new Map<string, ((value?: any) => void)[]>();
@@ -24,10 +25,11 @@ export class RealtimeConnection {
     this.socket.on('connect', () => {
       this.connected = true;
       const previous = this.seat && this.lastSnapshot;
+      const wasInLobby = previous?.phase === 'lobby' || !!previous?.players.find(p => p.id === this.seat?.id)?.inLobby;
       this.emit('connect'); this.emit('stable'); this.ping();
       if (previous) {
         this.detach();
-        if (previous.phase === 'lobby') this.emit('lobby_recover');
+        if (wasInLobby) this.emit('lobby_recover');
         else this.emit('seat_error', 'Your match seat disconnected. Return home to join the next lobby.');
       }
     });
@@ -57,7 +59,7 @@ export class RealtimeConnection {
   }
   request(event: string, value: any): Promise<RealtimeReply> {
     const leaving = event !== 'room' && value === 'leave';
-    if (leaving || event === 'room') this.detach();
+    if (event === 'room' || leaving && !this.seat) this.detach();
     const generation = this.generation;
     const task = this.queue.then(async () => {
       if (generation !== this.generation && !leaving) return { ok: false, error: 'That room request was canceled.' };
@@ -74,7 +76,8 @@ export class RealtimeConnection {
       }
       if (reply.ok && event === 'room' && reply.id && reply.snapshot) {
         this.seat = { id: reply.id, code: reply.snapshot.code }; this.lastSnapshot = reply.snapshot;
-      } else if (reply.ok && !leaving && reply.snapshot) {
+      } else if (reply.ok && leaving) this.detach();
+      else if (reply.ok && reply.snapshot) {
         this.lastSnapshot = reply.snapshot; this.emit('snapshot', reply.snapshot);
       }
       return reply;
@@ -90,7 +93,10 @@ export class RealtimeConnection {
     this.socket.connect();
     if (!this.inputTimer) this.inputTimer = setInterval(() => {
       if (!this.connected || !this.seat || this.lastSnapshot?.phase !== 'playing') return;
+      const player = this.lastSnapshot.players.find(p => p.id === this.seat!.id);
+      if (!player?.connected || player.inLobby) { this.pendingDash = null; return; }
       const input = this.sample?.(); if (!input) return;
+      if (!this.canAct()) { this.pendingDash = null; input.mx = 0; input.my = 0; input.fire = false; input.dash = false; }
       if (input.dash) this.pendingDash = { seq: input.seq, life: input.life, expires: performance.now() + 500 };
       if (this.pendingDash && (this.pendingDash.life !== input.life || performance.now() > this.pendingDash.expires)) this.pendingDash = null;
       if (this.pendingDash) input.dash = true;

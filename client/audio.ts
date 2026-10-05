@@ -12,6 +12,7 @@ export class Sound {
   private snapshot: Snapshot | null = null; private id = ''; private connected = true;
   private steps = new Map<string, number>(); private lastUpdate = 0; private creakAt = 0; private creakIndex = 0;
   private countdown = ''; private receivedAt = 0;
+  private introPlaying = false;
   constructor() {
     let saved: unknown, legacy = false;
     try { saved = JSON.parse(localStorage.getItem('nb-audio') || 'null'); legacy = localStorage.getItem('nb-muted') === 'true'; } catch { /* Storage is optional. */ }
@@ -30,6 +31,7 @@ export class Sound {
         this.context.onstatechange = () => this.onStatus?.();
         this.mixer = new AudioMixer(this.context, this.settings);
         this.music = new MusicDirector(this.context, this.mixer.buses.music, this.settings);
+        this.music.setIntroPlaying(this.introPlaying);
         if (this.snapshot) this.music.receive(this.snapshot, this.id);
       }
       // Called only by interaction handlers. Old gunshots are never queued
@@ -43,8 +45,13 @@ export class Sound {
     this.mixer?.configure(this.settings); this.music?.configure(this.settings); if (this.settings.muted || this.settings.master === 0) this.mixer?.stop();
     this.onStatus?.();
   }
+  setIntroPlaying(active: boolean) {
+    this.introPlaying = active;
+    this.music?.setIntroPlaying(active);
+    if (active) this.mixer?.stop();
+  }
   private play(kind: SoundKind, options: PlayOptions = {}) {
-    if (this.status !== 'ready' || document.hidden || !this.mixer) return;
+    if (this.introPlaying || this.status !== 'ready' || document.hidden || !this.mixer) return;
     this.mixer.play(kind, options);
   }
   joined() { this.connected = true; this.play('join', { bus: 'ui', gain: 0.32, priority: 35 }); }
@@ -107,7 +114,7 @@ export class Sound {
     } else if (event.type === 'respawn' && event.player === this.id && s.players.find(p => p.id === this.id)?.hp === 0) this.play('respawn', { bus: 'ui', gain: 0.51, priority: 80 });
   }
   update(position: Vec3, yaw: number, pitch: number, serverNow: number) {
-    if (!this.mixer || this.status !== 'ready' || document.hidden) return;
+    if (this.introPlaying || !this.mixer || this.status !== 'ready' || document.hidden) return;
     const now = performance.now(); if (now - this.lastUpdate < 33) return; this.lastUpdate = now;
     this.music?.update();
     this.mixer.setListener(position, yaw, pitch);

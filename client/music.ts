@@ -46,6 +46,7 @@ export class MusicDirector {
   private mode: 'lobby' | 'playing' | 'ended' | 'disconnected' = 'lobby';
   private origin = 0; private endOrigin = 0; private lobbyOrigin = 0;
   private endWall = 0; private engagedUntil = 0; private final = false; private paused = false;
+  private introPlaying = false; private lobbyFade = 1.6;
   private shimmerAt = -100; private ending: 'victory' | 'defeat' = 'defeat';
   constructor(readonly context: BaseAudioContext, output: AudioNode, settings: AudioSettings) {
     this.settings = settings; this.duck = context.createGain();
@@ -72,6 +73,12 @@ export class MusicDirector {
     await Promise.all((Object.keys(SCORE) as Cue[]).filter(c => c !== 'lobby' && c !== 'combat').map(load));
   }
   configure(settings: AudioSettings) { this.settings = settings; this.update(); }
+  setIntroPlaying(active: boolean) {
+    if (this.introPlaying === active) return;
+    this.introPlaying = active;
+    if (active) this.stopAll(.04);
+    else { this.lobbyFade = .6; this.lobbyOrigin = this.context.currentTime; this.update(); }
+  }
   pause(paused: boolean) { this.paused = paused; if (!paused && this.mode === 'ended') this.endOrigin = this.context.currentTime - (performance.now() - this.endWall) / 1000 + .14; if (paused) this.stopAll(.04); else this.update(); }
   disconnect() { this.mode = 'disconnected'; this.stopAll(.15); }
   clear() { this.snapshot = null; this.key = ''; this.mode = 'lobby'; this.lobbyOrigin = this.context.currentTime; this.final = false; this.engagedUntil = 0; this.shimmerAt = -100; this.update(); }
@@ -106,7 +113,7 @@ export class MusicDirector {
     } else if (event.type === 'cell' && event.player === this.id) this.shimmerAt = now;
     this.update();
   }
-  private enabled() { return !this.paused && this.context.state === 'running' && !this.settings.muted && this.settings.master > 0 && this.settings.music > 0; }
+  private enabled() { return !this.introPlaying && !this.paused && this.context.state === 'running' && !this.settings.muted && this.settings.master > 0 && this.settings.music > 0; }
   private level(voice: Voice, target: number, fade: number) {
     if (voice.target === target) return; voice.target = target;
     const now = this.context.currentTime;
@@ -138,7 +145,7 @@ export class MusicDirector {
     if (!this.enabled() || this.mode === 'disconnected') { this.stopAll(.06); return; }
     const now = this.context.currentTime, keep = new Set<Cue>();
     const use = (cue: Cue, offset: number, target: number, fade: number, at?: number) => { keep.add(cue); this.play(cue, offset, target, fade, at); };
-    if (this.mode === 'lobby') use('lobby', now - this.lobbyOrigin, 1, 1.6);
+    if (this.mode === 'lobby') { use('lobby', now - this.lobbyOrigin, 1, this.lobbyFade); if (this.voices.has('lobby')) this.lobbyFade = 1.6; }
     else if (this.mode === 'ended') {
       const age = now - this.endOrigin;
       if (age < SCORE[this.ending].seconds) use(this.ending, Math.max(0, age), 1, .06, Math.max(now, this.endOrigin));

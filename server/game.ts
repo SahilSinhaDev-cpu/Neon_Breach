@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { BOXES, COLORS, PADS, RULES, aimDirection, move, movement, rayBox } from '../shared/world';
 import type { GameEvent, Input, PublicPlayer, Snapshot, RoomMode } from '../shared/protocol';
 import { botInput, createBrain, type BotBrain } from './bots';
+import { logRejection } from './rejections';
 
 export type Player = PublicPlayer & { token: string; socketId: string | null; input: Input | null; inputAt: number; lastFire: number; leftAt: number; inputLeaseMs?: number };
 const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -29,6 +30,7 @@ export class Room {
   cell = false; cellAt = 0; winner: string | null = null; reason = ''; match = 0;
   emptyAt: number | null = null; order = 0;
   events: GameEvent[] = [];
+  private finalPlayers: PublicPlayer[] = [];
   private brains = new Map<string, BotBrain>();
   constructor(public code: string, public readonly mode: RoomMode = 'multiplayer') {}
   // Complete JSON-safe state for the retained Function backend and QA. Its
@@ -41,15 +43,18 @@ export class Room {
     for (const key of ['phase', 'host', 'startedAt', 'endsAt', 'cell', 'cellAt', 'winner', 'reason', 'match', 'emptyAt', 'order'] as const) Object.assign(room, { [key]: data[key] });
     room.players = new Map(data.players.map(p => [p.id, { ...p, lastFire: p.lastFire ?? -Infinity }]));
     room.brains = new Map(data.brains);
+    room.finalPlayers = data.finalPlayers ?? [];
     return room;
   }
   connected() { return [...this.players.values()].filter(p => p.connected); }
   humans() { return this.connected().filter(p => !p.bot); }
+  participants() { return this.connected().filter(p => !p.inLobby); }
+  private matchHumans() { return this.participants().filter(p => !p.bot); }
   add(nameValue: unknown, socketId: string, now: number, token?: unknown): Player {
     const name = callsign(nameValue);
-    if (this.phase !== 'lobby') throw new Error(this.phase === 'playing' ? 'Match already in progress. Join after the host returns to the lobby.' : 'Match has ended. Wait for the host to open the next lobby.');
     this.cleanup(now);
     const recovered = typeof token === 'string' ? [...this.players.values()].find(p => !p.bot && p.token === token) : undefined;
+    if (this.phase !== 'lobby' && !recovered?.inLobby) throw new Error(this.phase === 'playing' ? 'Match already in progress. Join after the host returns to the lobby.' : 'Match has ended. Wait for the host to open the next lobby.');
     if (recovered) {
       if (recovered.connected) throw new Error('This seat is already connected in another tab.');
       recovered.connected = true; recovered.socketId = socketId; recovered.leftAt = 0;
@@ -76,15 +81,32 @@ export class Room {
     }
   }
   disconnect(id: string, now: number, explicit = false) {
+    this.checkTimeout(now);
     const p = this.players.get(id); if (!p || !p.connected || p.bot) return;
     p.connected = false; p.socketId = null; p.input = null; p.leftAt = now; p.phaseUntil = 0;
-    if (explicit && this.phase === 'lobby') this.players.delete(id);
     const connected = this.humans();
-    if (this.host === id) this.host = connected[0]?.id ?? '';
+    if (this.host === id) this.host = (this.phase === 'playing' ? this.matchHumans()[0] : undefined)?.id ?? connected[0]?.id ?? '';
     if (!connected.length) this.emptyAt = now;
+    this.checkDepartures();
+    if (explicit) this.players.delete(id);
+  }
+  // A connected room seat may wait in the lobby while the other operators
+  // finish this contract. It cannot move, respawn, fire, block shots or win.
+  returnToLobby(id: string, now: number) {
+    this.checkTimeout(now);
+    const p = this.players.get(id);
+    if (!p?.connected || p.bot) throw new Error('Your seat is no longer available.');
+    if (this.phase === 'lobby' || p.inLobby) return;
+    p.inLobby = true; p.input = null; p.phaseUntil = 0;
+    if (this.phase === 'playing' && this.host === id) this.host = this.matchHumans()[0]?.id ?? this.humans()[0]?.id ?? '';
+    this.checkDepartures();
+  }
+  private checkDepartures() {
+    if (this.phase !== 'playing') return;
+    const active = this.matchHumans();
     if (this.mode === 'solo') {
-      if (!connected.length && this.phase === 'playing') this.finish(null, 'Solo practice ended — operator disconnected');
-    } else if (this.phase === 'playing' && connected.length <= 1) this.finish(connected[0]?.id ?? null, connected.length ? 'Last operator connected' : 'Signal lost — no operators remain');
+      if (!active.length) this.finish(null, 'Solo practice ended — operator left the match');
+    } else if (active.length <= 1) this.finish(active[0]?.id ?? null, active.length ? 'Last operator connected' : 'Signal lost — no operators remain');
   }
   cleanup(now: number) {
     if (this.phase === 'lobby') for (const p of this.players.values()) if (!p.connected && now - p.leftAt >= 30000) this.players.delete(p.id);
@@ -95,23 +117,23 @@ export class Room {
     if (this.humans().length < (this.mode === 'solo' ? 1 : 2)) throw new Error(this.mode === 'solo' ? 'A connected operator is required for solo practice.' : 'At least two connected operators are required.');
     for (const p of this.players.values()) if (!p.connected) this.players.delete(p.id);
     this.phase = 'playing'; this.startedAt = now; this.endsAt = now + RULES.matchMs; this.match++;
-    this.cell = false; this.cellAt = now + RULES.cellMs; this.winner = null; this.reason = ''; this.events = []; this.brains.clear();
+    this.cell = false; this.cellAt = now + RULES.cellMs; this.winner = null; this.reason = ''; this.events = []; this.brains.clear(); this.finalPlayers = [];
     // Mark all players down before choosing pads so only already-spawned opponents count.
-    for (const p of this.players.values()) { p.hp = 0; p.score = 0; p.deaths = 0; p.scoreAt = 0; p.phaseUntil = 0; p.dashAt = 0; p.ack = -1; p.input = null; p.inputLeaseMs = undefined; p.lastFire = -Infinity; }
+    for (const p of this.players.values()) { p.inLobby = false; p.hp = 0; p.score = 0; p.deaths = 0; p.scoreAt = 0; p.phaseUntil = 0; p.dashAt = 0; p.ack = -1; p.input = null; p.inputLeaseMs = undefined; p.lastFire = -Infinity; }
     for (const p of this.connected()) this.spawn(p, now);
   }
   replay(id: string) {
     if (id !== this.host) throw new Error('Only the host can reopen the lobby.');
     if (this.phase !== 'ended') throw new Error('Finish the current contract first.');
-    this.phase = 'lobby'; this.startedAt = 0; this.endsAt = 0; this.cell = false; this.cellAt = 0; this.winner = null; this.reason = ''; this.events = []; this.brains.clear();
+    this.phase = 'lobby'; this.startedAt = 0; this.endsAt = 0; this.cell = false; this.cellAt = 0; this.winner = null; this.reason = ''; this.events = []; this.brains.clear(); this.finalPlayers = [];
     for (const p of this.players.values()) {
       if (!p.connected) { this.players.delete(p.id); continue; }
-      Object.assign(p, { hp: RULES.health, score: 0, deaths: 0, scoreAt: 0, respawnAt: 0, protectUntil: 0, phaseUntil: 0, dashAt: 0, input: null, inputLeaseMs: undefined, ack: -1, lastFire: -Infinity, x: 0, z: 0, yaw: 0, pitch: 0 });
+      Object.assign(p, { inLobby: false, hp: RULES.health, score: 0, deaths: 0, scoreAt: 0, respawnAt: 0, protectUntil: 0, phaseUntil: 0, dashAt: 0, input: null, inputLeaseMs: undefined, ack: -1, lastFire: -Infinity, x: 0, z: 0, yaw: 0, pitch: 0 });
     }
   }
   spawn(p: Player, now: number) {
     p.life++;
-    const opponents = this.connected().filter(q => q.id !== p.id && q.hp > 0);
+    const opponents = this.participants().filter(q => q.id !== p.id && q.hp > 0);
     const pads = PADS.map((pad, index) => ({ ...pad, index, distance: Math.min(...opponents.map(q => Math.hypot(q.x - pad.x, q.z - pad.z))) })).sort((a, b) => b.distance - a.distance || a.index - b.index);
     const pad = pads[0];
     Object.assign(p, { x: pad.x, z: pad.z, yaw: Math.atan2(pad.x, pad.z), pitch: 0, hp: RULES.health, respawnAt: 0, protectUntil: now + RULES.protectMs, phaseUntil: 0, input: null, inputLeaseMs: undefined, lastFire: -Infinity });
@@ -120,7 +142,10 @@ export class Room {
   receive(id: string, raw: unknown, now: number) {
     this.checkTimeout(now);
     const p = this.players.get(id), input = parseInput(raw);
-    if (this.phase !== 'playing' || !p?.connected || p.bot || p.hp <= 0 || !input || input.seq <= p.ack || input.life !== p.life) return false;
+    if (this.phase !== 'playing' || !p?.connected || p.inLobby || p.bot || p.hp <= 0 || !input || input.seq <= p.ack || input.life !== p.life) {
+      if ((input?.fire || raw && typeof raw === 'object' && (raw as { fire?: unknown }).fire === true) && !p?.bot) logRejection('shot', this.code, id, 'inactive, eliminated, stale or invalid input', now);
+      return false;
+    }
     this.applyInput(p, input, now);
     return true;
   }
@@ -133,14 +158,15 @@ export class Room {
     }
     if (input.fire) this.shoot(p, now);
   }
-  shoot(p: Player, now: number) {
-    if (this.phase !== 'playing' || !p.connected || p.hp <= 0 || now < p.protectUntil || now - p.lastFire < RULES.fireMs) return;
+  shoot(p: Player, now: number, reportAttempt = true) {
+    const rejection = this.phase !== 'playing' || !p.connected || p.inLobby || p.hp <= 0 ? 'operator is not active' : now < p.protectUntil ? 'spawn protection' : now - p.lastFire < RULES.fireMs ? 'fire cooldown' : '';
+    if (rejection) { if (reportAttempt && !p.bot) logRejection('shot', this.code, p.id, rejection, now); return; }
     p.lastFire = now;
     const from = { x: p.x, y: RULES.eye, z: p.z }, direction = aimDirection(p.yaw, p.pitch);
     let distance = Math.min(100, ...BOXES.map(b => rayBox(from, direction, b)));
     let target: Player | null = null;
     for (const q of this.players.values()) {
-      if (q.id === p.id || !q.connected || q.hp <= 0) continue;
+      if (q.id === p.id || !q.connected || q.inLobby || q.hp <= 0) continue;
       const d = rayBox(from, direction, { x: q.x, y: RULES.height / 2, z: q.z, w: RULES.radius * 2, h: RULES.height, d: RULES.radius * 2, kind: 'cover' });
       // Strictly closer: cover wins exact ties.
       if (d < distance) { distance = d; target = q; }
@@ -161,13 +187,13 @@ export class Room {
     this.checkTimeout(now);
     if (this.phase !== 'playing') return;
     if (!this.cell && now >= this.cellAt) this.cell = true;
-    for (const p of this.connected()) {
+    for (const p of this.participants()) {
       if (p.hp <= 0) { if (now >= p.respawnAt) this.spawn(p, now); continue; }
       if (p.phaseUntil && now >= p.phaseUntil) p.phaseUntil = 0;
       if (p.bot) {
         let brain = this.brains.get(p.id);
         if (!brain || brain.life !== p.life) { brain = createBrain(p, now); this.brains.set(p.id, brain); }
-        this.applyInput(p, botInput(p, this.connected(), this.cell, brain, now, Math.min(dt, RULES.tick)), now);
+        this.applyInput(p, botInput(p, this.participants(), this.cell, brain, now, Math.min(dt, RULES.tick)), now);
         if (this.phase !== 'playing') break;
       }
       // HTTP round trips can exceed the original WebSocket watchdog. The
@@ -177,16 +203,16 @@ export class Room {
       if (p.input && now - p.inputAt <= inputLease) {
         const delta = movement(p.input.mx, p.input.my, p.yaw, RULES.speed * Math.min(dt, RULES.tick));
         Object.assign(p, move(p.x, p.z, delta.x, delta.z));
-        if (p.input.fire) this.shoot(p, now);
+        if (p.input.fire) this.shoot(p, now, false);
       }
       if (this.phase !== 'playing') break;
       if (this.cell && Math.hypot(p.x, p.z) <= 1.1) { this.cell = false; this.cellAt = now + RULES.cellMs; p.phaseUntil = now + RULES.phaseMs; this.events.push({ type: 'cell', player: p.id }); }
     }
   }
-  checkTimeout(now: number) { if (this.phase === 'playing' && now >= this.endsAt) this.finish(rank(this.connected())[0]?.id ?? null, 'Contract time expired'); }
-  finish(winner: string | null, reason: string) { this.phase = 'ended'; this.winner = winner; this.reason = reason; this.cell = false; this.cellAt = 0; for (const p of this.players.values()) { p.input = null; p.phaseUntil = 0; } }
+  checkTimeout(now: number) { if (this.phase === 'playing' && now >= this.endsAt) this.finish(rank(this.participants())[0]?.id ?? null, 'Contract time expired'); }
+  finish(winner: string | null, reason: string) { this.phase = 'ended'; this.winner = winner; this.reason = reason; this.cell = false; this.cellAt = 0; for (const p of this.players.values()) { p.input = null; p.phaseUntil = 0; } this.finalPlayers = this.snapshot(0).players; }
   snapshot(now: number): Snapshot {
-    return { code: this.code, mode: this.mode, phase: this.phase, host: this.host, now, startedAt: this.startedAt, endsAt: this.endsAt, cell: this.cell, cellAt: this.cellAt, winner: this.winner, reason: this.reason, match: this.match, players: [...this.players.values()].map(({ token: _token, socketId: _socket, input: _input, inputAt: _inputAt, lastFire: _lastFire, leftAt: _leftAt, inputLeaseMs: _lease, ...p }) => p) };
+    return { code: this.code, mode: this.mode, phase: this.phase, host: this.host, now, startedAt: this.startedAt, endsAt: this.endsAt, cell: this.cell, cellAt: this.cellAt, winner: this.winner, reason: this.reason, match: this.match, finalPlayers: this.phase === 'ended' ? this.finalPlayers : undefined, players: [...this.players.values()].map(({ token: _token, socketId: _socket, input: _input, inputAt: _inputAt, lastFire: _lastFire, leftAt: _leftAt, inputLeaseMs: _lease, ...p }) => p) };
   }
   drainEvents() { const events = this.events; this.events = []; return events; }
 }

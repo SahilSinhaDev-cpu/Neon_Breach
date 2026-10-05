@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { io, type Socket } from 'socket.io-client';
 import { preview } from '../scripts/local-preview';
 import type { RealtimeReply, SnapshotPacket } from '../shared/realtime-protocol';
+import { REALTIME_VERSION } from '../shared/realtime-protocol';
 const pause = (ms: number) => new Promise(r => setTimeout(r, ms));
 const listener = createServer(); await new Promise<void>(r => listener.listen(0, '127.0.0.1', r));
 const address = listener.address(); assert.ok(address && typeof address === 'object');
@@ -22,9 +23,9 @@ let compatibility: Awaited<ReturnType<typeof preview>> | null = null;
 const checks: string[] = [];
 const check = (message: string) => { checks.push(message); console.log(`PASS ${message}`); };
 const command = (socket: Socket, event: string, data: object): Promise<RealtimeReply> => new Promise((resolve, reject) => socket.timeout(3000).emit(event, { ...data, requestId: randomUUID() }, (error: Error | null, value: RealtimeReply) => error ? reject(error) : resolve(value)));
-async function connect() { const socket = io(url, { transports: ['websocket'], auth: { protocol: 1 }, reconnection: false }); sockets.push(socket); await new Promise<void>((resolve, reject) => { socket.once('connect', resolve); socket.once('connect_error', reject); }); return socket; }
+async function connect() { const socket = io(url, { transports: ['websocket'], auth: { protocol: REALTIME_VERSION }, extraHeaders: { Origin: 'https://neonbreach977.vercel.app' }, reconnection: false }); sockets.push(socket); await new Promise<void>((resolve, reject) => { socket.once('connect', resolve); socket.once('connect_error', reject); }); return socket; }
 try {
-  let ready = false; for (let i = 0; i < 50; i++) { try { const r = await fetch(`${url}/healthz`); const health = await r.json(); if (r.ok && health.protocol === 1) { ready = true; break; } } catch {} await pause(100); }
+  let ready = false; for (let i = 0; i < 50; i++) { try { const r = await fetch(`${url}/healthz`); const health = await r.json(); if (r.ok && health.protocol === REALTIME_VERSION) { ready = true; break; } } catch {} await pause(100); }
   assert.ok(ready, output); assert.match(await (await fetch(url)).text(), /NEON BREACH/i);
   assert.deepEqual(await (await fetch(`${url}/game-config.json`)).json(), { transport: 'websocket', serverUrl: null });
   check('Compiled production entry starts, reports healthy protocol, serves frontend and selects WebSockets');

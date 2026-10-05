@@ -1,0 +1,15 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "npm ci --include=dev",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist/client",
+  "headers": [
+    { "source": "/game-config.json", "headers": [{ "key": "Cache-Control", "value": "no-store" }] },
+    { "source": "/", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+    { "source": "/(.*)", "headers": [
+      { "key": "X-Content-Type-Options", "value": "nosniff" },
+      { "key": "Referrer-Policy", "value": "same-origin" }
+    ] }
+  ]
+}

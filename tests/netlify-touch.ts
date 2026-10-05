@@ -19,7 +19,7 @@ try {
   await Promise.all([a, m].map(p => p.locator('#landing-connection').filter({ hasText: 'STATION ONLINE' }).waitFor()));
   assert.equal(await m.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true); check('Mobile portrait landing fits the screen');
   await a.locator('#callsign').fill('DESKTOP'); await a.locator('#create').click(); await a.locator('#lobby').waitFor({ state: 'visible' }); const code = (await a.locator('#lobby-code').textContent())!;
-  await m.locator('#callsign').fill('TOUCH'); await m.locator('#room-code').fill(code); await m.locator('#join').click(); await m.locator('#lobby').waitFor({ state: 'visible' });
+  await m.locator('#callsign').fill('TOUCH'); await m.locator('#join-open').click(); await m.locator('#room-code').fill(code); await m.locator('#join').click(); await m.locator('#lobby').waitFor({ state: 'visible' });
   await m.setViewportSize({ width: 844, height: 390 }); await pause(600); await a.locator('#start').click(); await m.locator('#hud').waitFor({ state: 'visible' }); await m.bringToFront();
   const p = (await server.blobs.read(code)).room.players.find(p => p.name === 'TOUCH')!, id = p.id;
   const cdp = await mobile.newCDPSession(m);
@@ -39,8 +39,8 @@ try {
   const dash = (await m.locator('#dash-touch').boundingBox())!; await touch('touchStart', dash.x + dash.width / 2, dash.y + dash.height / 2); await touch('touchEnd'); await pause(250);
   const dashed = (await server.blobs.read(code)).room.players.find(p => p.id === id)!; assert.ok(dashed.z >= -19.58 && dashed.z < -19.4); check('Dedicated touch Dash stops at the arena wall and shows cooldown');
   await mkdir('artifacts/netlify', { recursive: true }); await m.screenshot({ path: 'artifacts/netlify/mobile.png' });
-  await a.bringToFront(); await a.keyboard.press('Escape'); await a.locator('#match-settings').click(); await a.locator('#leave-match').click(); await m.locator('#results').waitFor({ state: 'visible' }); assert.equal(await m.locator('#winner').textContent(), 'TOUCH'); check('Explicit leave transfers host and awards the last connected player');
-  await m.locator('#leave-results').click(); await m.locator('#landing').waitFor({ state: 'visible' }); await m.locator('#solo').click(); await m.locator('#lobby').waitFor({ state: 'visible' });
+  await a.bringToFront(); await a.keyboard.press('Escape'); await a.locator('#leave-match').click(); await a.locator('#confirm-accept').click(); await m.locator('#results').waitFor({ state: 'visible' }); assert.equal(await m.locator('#winner').textContent(), 'TOUCH'); check('Explicit leave transfers host and awards the last connected player');
+  await m.locator('#leave-results').click(); await m.locator('#confirm-accept').click(); await m.locator('#landing').waitFor({ state: 'visible' }); await m.locator('#solo').click(); await m.locator('#lobby').waitFor({ state: 'visible' });
   assert.equal(await m.locator('#roster .bot-tag').count(), 3); await m.locator('#start').click(); await m.locator('#hud').waitFor({ state: 'visible' }); await pause(2500);
   const data = await server.blobs.read((state as unknown as Snapshot).code); assert.equal(data.room.mode, 'solo'); assert.equal(data.room.phase, 'playing'); assert.equal(data.room.brains.length, 3); assert.ok(data.room.players.filter(p => p.bot).every(p => p.ack > 30));
   check('Solo starts with three labeled bots; persisted brains and authoritative movement survive repeated function requests');

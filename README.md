@@ -15,6 +15,20 @@ The original **Signal / Inheritance** score connects a quiet lobby, match introd
 
 The arena is **The Shattered Relay**: a damaged orbital communications chamber with a suspended relay, mirrored power-bank cover, blue and amber service lanes, an armored planet viewport, a scarred blast door, and a broken uplink display. Shared server/client geometry keeps the added solid structures consistent with movement and shots. See [the environment layout, rendering tradeoffs, and live-match evidence](docs/ENVIRONMENT.md).
 
+## Title sequence
+
+An original **18-second intro** uses staged in-engine capture of this exact arena, human operators, Pulse Rifle and Phase Cell, with the game's own soundtrack and combat sounds. It is not AI-generated footage or a live multiplayer recording. The 1080p and 720p H.264 files are in `public/intro/`.
+
+The first valid Create, Join or Solo gesture plays it once per tab session, before requesting a room. Skip is available after one second; failed media cannot prevent room creation. Lobby-seat recovery bypasses it. Audio follows Master × Music and Mute, and the final frame fades into the actual lobby with the same camera and lighting. See [the shot sequence, trigger, audio handoff and regeneration workflow](docs/INTRO.md). This addition does not claim a new public deployment.
+
+## Menus and navigation
+
+The visor menus provide Create Room, Join Room, How to Play and Settings; host-only Start Match and Play Again; and confirmed Return to Lobby, Quit Match and Leave Room. Esc or the touch Menu button pauses only your controls. Resume and Back preserve health, position, score and the live server clock. Settings return to their caller and apply immediately.
+
+Return to Lobby keeps your seat in the same room while other operators continue. Quit Match removes it and returns to Landing. The server transfers the host and applies the normal last-active-player win rule. Finished scores remain readable if a winner leaves. See [every button, server behavior and navigation acceptance checks](docs/NAVIGATION.md).
+
+The bug sweep cancels unacknowledged dash retries when controls become inactive, including Pause, released pointer lock and hidden tabs. Shot and Leave rejections have bounded server diagnostics. Gameplay rules and visuals are unchanged. See [the reproduced defects and 17-item regression report](docs/BUG-SWEEP.md).
+
 ## Real-time hosting
 
 This release restores a **persistent Node/Socket.IO game server**, while the website can remain on Netlify. Live inputs no longer read and replace a Blobs object. The authoritative server simulates at 60 Hz, pushes snapshots at approximately 20 Hz, and receives input at approximately 30 Hz. Rendering, game rules, touch controls, art and sounds are preserved.
@@ -22,6 +36,8 @@ This release restores a **persistent Node/Socket.IO game server**, while the web
 **The public Netlify site has not yet been switched to this transport.** `public/game-config.json` deliberately retains HTTP compatibility until there is an actual verified backend URL. Uploading this ZIP alone will not solve hosted multiplayer lag. Local play and direct backend-hosted play already select WebSockets automatically.
 
 The measured old Netlify responses had a 525 ms median, compared with 13 ms locally. See [the diagnosis](docs/NETLIFY-LATENCY.md). A persistent game server removes those per-input function/storage operations; internet latency still depends on server region and players' networks.
+
+The Vercel frontend at `neonbreach977.vercel.app` is also explicitly allowed by the backend. Root `vercel.json` selects Vite and publishes `dist/client`, where the compiled `index.html` actually lives. This corrects the source deployment configuration; the hosted 404 cannot be confirmed fixed until the updated source is redeployed in the Vercel account. See [the backend deployment status and checks](docs/DEPLOYMENT.md).
 
 [Deploy the prepared backend to Render](https://render.com/deploy?repo=https://github.com/SahilSinhaDev-cpu/Neon_Breach)
 
@@ -37,14 +53,14 @@ The bundled Netlify Function is retained for compatibility with the existing web
 
 - **Multiplayer:** one player creates a room; 1–3 friends enter its six-character code on their own devices. Only the host starts, with at least two humans.
 - **Solo:** Play Solo creates a private session with three clearly labeled bots. One human can start.
-- **Desktop:** WASD/arrows move, mouse aims, click/hold fires, Shift dashes, Esc releases the mouse. Settings adjust sensitivity and audio.
+- **Desktop:** WASD/arrows move, mouse aims, click/hold fires, Shift dashes, Esc opens Menu and releases the mouse. Resume returns to play. Settings adjust sensitivity and audio.
 - **Touch:** left stick moves, right drag aims, Fire shoots, Dash dashes. Landscape provides more aiming space.
 - **Combat:** 100 health; 34 damage; 280 ms minimum fire interval; unlimited ammunition. Three hits eliminate. Respawn after five seconds, then one second of protection from firing and damage.
 - **Dash/Phase:** dash up to six meters every three seconds, stopping at cover. The center cell appears after 20 seconds. Touch it for four seconds of phasing; remain visible and hittable. Replacement appears 20 seconds after pickup.
 - **Winner:** first to ten eliminations, otherwise the most at 180 seconds. Ties favor the earlier achievement of the tied score, then join order. Last connected human wins in multiplayer.
-- **Replay:** host chooses Return to lobby; all connected players reset, then host starts a new match. There is no series or aggregate winner: each contract has its own score and winner.
+- **Replay:** host chooses Play Again; all connected players reset, then host starts a new match. Return to Lobby is a personal exit and preserves the room. There is no series or aggregate winner: each contract has its own score and winner.
 
-The lobby shows all seven rules. In real-time mode, lobby refresh or a brief dropped connection recovers the same private seat for up to 30 seconds. Duplicate connected seats are rejected. Disconnecting during a match removes that player; reconnecting displays a clear Return home overlay. Explicit leave is immediate; silent connection loss is detected by the WebSocket heartbeat (2.5-second ping interval and 5-second timeout). Stale movement and held fire stop after 350 ms without accepted input. Clients cannot choose positions, damage, deadlines or scores.
+The lobby shows all seven rules. In real-time mode, lobby refresh or a brief dropped connection recovers the same private seat for up to 30 seconds. Duplicate connected seats are rejected. Disconnecting during a match removes that player; reconnecting displays Reconnect and a confirmed Return to Landing. Personal lobby seats can recover while other members remain in a live match. Explicit leave is immediate; silent connection loss is detected by the WebSocket heartbeat (2.5-second ping interval and 5-second timeout). Stale movement and held fire stop after 350 ms without accepted input. Clients cannot choose positions, damage, deadlines or scores.
 
 ## Two-device check after upload
 
@@ -54,7 +70,7 @@ The lobby shows all seven rules. In real-time mode, lobby refresh or a brief dro
 4. Shoot an exposed player three times; confirm score, elimination, respawn and protection. Try firing through cover and dashing into a wall.
 5. After 20 seconds, collect the center Phase Cell and check its four-second countdown.
 6. Reach ten eliminations or let the three-minute timer expire. Both devices must show matching scores and winner.
-7. Return both players to the lobby and repeat twice for three complete contracts.
+7. Use host Play Again to return both players to the lobby and repeat twice for three complete contracts.
 
 ## Architecture and limits
 
@@ -72,6 +88,9 @@ Node 22.12 or newer is required. For developers, `npm ci`, `npm run build`, then
 - `npm run test:realtime`: two independent Chrome clients with 200 ms added RTT; three genuine 180-second contracts and replay. It uses compiled production assets/server. Tests control poses only, not scores or deadlines.
 - `npm run test:realtime-touch`: Chrome touch emulation, authoritative touch movement/aim/fire/dash and solo bots.
 - `npm run test:realtime-split`: distinct frontend/backend origins; lobby recovery, active disconnect and the next lobby.
+- `npm run test:menus` / `npm run test:menus-http`: independent-browser navigation acceptance for both production transports, including touch emulation and injected request failures.
+- `npm run test:bug-sweep`: two independent muted browsers; collision, combat, a dropped-dash/Pause regression, ten genuine eliminations and an unmodified 180-second tied-score timeout.
+- `npm run test:performance` / `npm run test:performance -- --mobile`: solo rendering benchmark and Chrome DevTools trace on the local GPU. The FPS counter is always visible in a top corner outside the intro; see [client performance results](docs/PERFORMANCE.md).
 - `npm run test:browser` / `npm run test:touch`: retained Function/Blobs compatibility tests.
 - `npm run package:netlify`: creates `netlify-ready-game.zip` with complete source and release artifacts.
 

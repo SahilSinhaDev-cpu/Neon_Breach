@@ -8,6 +8,8 @@ import { riflePose } from './weapon';
 import { ShatteredRelay } from './environment';
 import { PulseEffects } from './pulse-vfx';
 import { localCorrection, predictionLead, remotePose, smoothRemotePosition } from './network-motion';
+import { LOBBY_CAMERA } from './lobby-camera';
+import { initialPixelRatio, RenderBudget } from './render-quality';
 
 const material = (color: number | string, emissive = 0, opacity = 1) => new T.MeshStandardMaterial({ color, metalness: 0.55, roughness: 0.55, emissive, emissiveIntensity: 0.7, transparent: opacity < 1, opacity });
 export class Arena {
@@ -15,14 +17,14 @@ export class Arena {
   operators = new Map<string, OperatorModel>(); pulses: PulseEffects;
   private blockedMuzzles = new Map<string, number>();
   cell = new T.Group(); beam: T.Mesh; rifle: Rifle; weapon: T.Group; muzzle: T.Object3D; muzzleFlash: T.Group;
-  environment: ShatteredRelay; private slowFrames = 0; private qualityReduced = false; private warmupUntil = performance.now() + 6000;
+  environment: ShatteredRelay; private budget = new RenderBudget(performance.now());
   private lastAim = { yaw: 0, pitch: 0 }; private sway = { x: 0, y: 0 }; private gait = 0; private dashVisualUntil = 0;
   private networkLead = 0;
   snapshot: Snapshot | null = null; history: { state: Snapshot; at: number }[] = [];
   local = { x: 0, z: 0 }; correction = { x: 0, z: 0 }; localId = ''; playing = false; kick = 0; lastFrame = performance.now(); initialized = false; lastLife = 0;
   constructor(public canvas: HTMLCanvasElement) {
     this.renderer = new T.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, matchMedia('(pointer: coarse)').matches ? 1.25 : 1.6)); this.renderer.setSize(innerWidth, innerHeight);
+    this.renderer.setPixelRatio(initialPixelRatio(devicePixelRatio, innerWidth, innerHeight, matchMedia('(pointer: coarse)').matches)); this.renderer.setSize(innerWidth, innerHeight);
     this.renderer.setClearColor('#071019'); this.renderer.toneMapping = T.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.25;
     // A small, generated studio environment gives curved armor and machined
     // edges useful reflections without external artwork or expensive shadows.
@@ -34,14 +36,14 @@ export class Arena {
     const key = new T.DirectionalLight('#c4d5dc', 2.3); key.position.set(-6, 15, 5); this.scene.add(key);
     const cool = new T.PointLight('#6ab1d8', 24, 23, 2); cool.position.set(-14, 3.6, 0); this.scene.add(cool);
     const emergency = new T.PointLight('#d9a067', 18, 23, 2); emergency.position.set(14, 3.6, 0); this.scene.add(emergency);
-    const core = new T.PointLight('#7ad8bb', 10, 10, 2); core.position.set(0, 3, 0); this.scene.add(core);
+    // The cell/core glow is emissive and needs no third per-pixel point light.
     this.environment = new ShatteredRelay(this.scene);
     this.pulses = new PulseEffects(this.scene);
     const crystal = new T.Mesh(new T.OctahedronGeometry(0.45), material('#9affdf', 0x62ffcd)); crystal.position.y = 1.15; this.cell.add(crystal);
     this.beam = new T.Mesh(new T.CylinderGeometry(0.12, 0.32, 5.2, 16, 1, true), new T.MeshBasicMaterial({ color: '#73fbd3', transparent: true, opacity: 0.18, depthWrite: false, side: T.DoubleSide, blending: T.AdditiveBlending })); this.beam.position.y = 2.6; this.cell.add(this.beam); this.scene.add(this.cell);
     const rifle = this.rifle = createPulseRifle(true); this.weapon = rifle.root; this.muzzle = rifle.muzzle; this.muzzleFlash = rifle.flash;
     const pose = riflePose(this.camera.aspect); this.weapon.position.set(pose.x, pose.y, pose.z); this.weapon.rotation.set(0, pose.yaw, pose.roll); this.camera.add(this.weapon); this.scene.add(this.camera);
-    window.addEventListener('resize', () => { this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix(); this.renderer.setSize(innerWidth, innerHeight); });
+    window.addEventListener('resize', () => { this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix(); this.renderer.setPixelRatio(Math.min(this.renderer.getPixelRatio(), initialPixelRatio(devicePixelRatio, innerWidth, innerHeight, matchMedia('(pointer: coarse)').matches))); this.renderer.setSize(innerWidth, innerHeight); });
   }
   operator(p: PublicPlayer) {
     const model = new OperatorModel(p.color, p.order); this.scene.add(model.root); this.operators.set(p.id, model); return model;
@@ -54,7 +56,7 @@ export class Arena {
     if (newMatch || newLife) { this.rifle.reset(); this.kick = 0; this.dashVisualUntil = 0; }
     else if (p && p.dashAt > (this.snapshot?.players.find(q => q.id === id)?.dashAt ?? 0)) this.dashVisualUntil = performance.now() + 420;
     if (p) this.rifle.setOperatorColor(p.color);
-    this.snapshot = s; this.playing = s.phase === 'playing';
+    this.snapshot = s; this.playing = s.phase === 'playing' && !p?.inLobby;
     this.networkLead = predictionLead(latency);
     this.history.push({ state: s, at: performance.now() }); while (this.history.length > 8) this.history.shift();
     if (p && this.playing) {
@@ -100,7 +102,8 @@ export class Arena {
       this.weapon.position.set(pose.x + this.sway.x + Math.sin(this.gait) * moving * 0.006, pose.y + this.sway.y + Math.cos(this.gait * 2) * moving * 0.005 + Math.sin(now * 0.0018) * 0.0015 - dash * .028, pose.z + this.kick * 0.025 + dash * .025);
       this.weapon.rotation.set(this.kick * 0.025 - dash * .06, pose.yaw + this.sway.x * 0.6, pose.roll + this.sway.x * -0.8);
     } else {
-      const t = now * 0.000035; this.camera.position.set(Math.sin(t) * 12 + 2, 4.1, Math.cos(t) * 14); this.camera.lookAt(0, 1.5, -2); this.weapon.visible = false;
+      const { position, target } = LOBBY_CAMERA;
+      this.camera.position.set(position.x, position.y, position.z); this.camera.lookAt(target.x, target.y, target.z); this.weapon.visible = false;
     }
     this.rifle.update(now / 1000);
     if ((this.blockedMuzzles.get(this.localId) ?? 0) > now) this.rifle.flash.visible = false;
@@ -110,9 +113,13 @@ export class Arena {
     const renderAt = now - 100 + this.networkLead;
     for (const q of this.snapshot?.players ?? []) {
       if (q.id === this.localId) continue;
-      const existing = this.operators.get(q.id), model = existing ?? this.operator(q);
+      const existing = this.operators.get(q.id);
+      // Build rigs while the lobby is open so their construction does not
+      // stall the first gameplay frame; skip their animation while hidden.
+      const model = existing ?? this.operator(q);
       model.sync(q.hp, q.life, q.dashAt, now / 1000, q.yaw);
-      model.root.visible = model.root.visible && this.playing && q.connected;
+      model.root.visible = model.root.visible && this.playing && q.connected && !q.inLobby;
+      if (!model.root.visible) continue;
       const pose = remotePose(this.history, q.id, renderAt);
       if (pose) {
         const position = !existing ? pose : smoothRemotePosition(model.root.position, pose, dt);
@@ -125,11 +132,12 @@ export class Arena {
     if (this.playing) this.pulses.update(now / 1000); else this.pulses.clear();
     for (const [id, until] of this.blockedMuzzles) if (now >= until) this.blockedMuzzles.delete(id);
     this.environment.update(now / 1000);
-    // Sustained low frame rate reduces fill cost and minor scenery first. Keep
-    // every landmark, opponent, and gameplay collider present at all qualities.
-    if (!this.qualityReduced && now > this.warmupUntil && !document.hidden) {
-      this.slowFrames = dt > 0.034 ? this.slowFrames + 1 : Math.max(0, this.slowFrames - 2);
-      if (this.slowFrames >= 120) { this.qualityReduced = true; this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1)); this.environment.setReduced(true); }
+    // Reduce fill cost after sustained misses of the frame budget, before 30
+    // FPS. All landmarks, colliders and enemy silhouettes stay present.
+    if (this.budget.observe(now, !document.hidden)) {
+      const ratio = this.renderer.getPixelRatio();
+      if (ratio > .65) this.renderer.setPixelRatio(Math.max(.65, ratio * .85));
+      this.environment.setReduced(true);
     }
     this.renderer.render(this.scene, this.camera);
   }

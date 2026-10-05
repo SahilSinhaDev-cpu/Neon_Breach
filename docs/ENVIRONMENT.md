@@ -36,9 +36,9 @@ The viewport is **sealed armored glass**, with visible frames and a label; its w
 
 ## Rendering choices
 
-Static surface details are merged by material. Panel and damage textures are small reusable canvases; the planet uses a 512 × 256 spherical noise texture. Lighting uses one hemisphere light, one directional light, and three short-range point lights. There are no shadow maps, bloom passes, dynamic reflection captures, or volumetric effects. Exterior geometry is deliberately simple.
+Static surface details and pressure-shell panels are merged by material. Panel and damage textures are small reusable canvases; the planet uses a 512 × 256 spherical noise texture on a 24 × 16 sphere. Lighting uses one hemisphere light, one directional light, and two short-range point lights. The core remains emissive. There are no shadow maps, bloom passes, dynamic reflection captures, or volumetric effects. Signs and distant planet/glass use simple unlit materials. Immutable world matrices are baked once; exterior debris remains animated.
 
-Pixel ratio is capped at 1.6 on desktop and 1.25 for coarse pointers. Sustained slow frames after warmup reduce it to at most 1 and remove minor sparks and four debris fragments. Landmarks, cover, players, and gameplay effects remain present. Reflections use a single generated environment map created at startup.
+Pixel ratio is capped at 1.25 on desktop and 1 for coarse pointers, with a 1920 × 1080 arena pixel budget on larger displays. After warmup, two consecutive windows below 50 FPS lower the drawing-buffer scale by 15 percent and remove minor sparks and four debris fragments. The floor is 0.65 when reducing an initially higher scale; an initially lower scale never increases. Landmarks, cover, players, and gameplay effects remain present. Reflections use a single generated environment map created at startup. See [PERFORMANCE.md](PERFORMANCE.md) for the 5 October before/after measurements; the older acceptance results below remain historical evidence.
 
 ## Executed verification
 

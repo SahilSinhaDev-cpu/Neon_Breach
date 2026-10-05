@@ -6,13 +6,14 @@ import { resolve } from 'node:path';
 import { Server } from 'socket.io';
 import { Rooms, RateLimit, callsign, roomCode } from './game';
 import { RULES } from '../shared/world';
+import { logRejection } from './rejections';
 import { REALTIME_RELEASE, REALTIME_VERSION, type RealtimeReply, type SnapshotPacket } from '../shared/realtime-protocol';
 
 export function createGameServer(options: { origins?: string[]; now?: () => number; manualTick?: boolean } = {}) {
   const app = express(), http = createServer(app), epoch = randomUUID();
   const startWall = Date.now(), startMono = performance.now();
   const now = options.now ?? (() => startWall + performance.now() - startMono);
-  const origins = new Set(options.origins ?? ['https://neonbreach977.netlify.app']);
+  const origins = new Set(options.origins ?? ['https://neonbreach977.netlify.app', 'https://neonbreach977.vercel.app']);
   function allowed(origin: string | undefined, host: string | undefined) {
     if (!origin) return true; // Non-browser clients still need a private seat token.
     try { return origins.has(origin) || new URL(origin).host === host; } catch { return false; }
@@ -92,7 +93,10 @@ export function createGameServer(options: { origins?: string[]; now?: () => numb
     socket.on('action', (raw: unknown, callback: unknown) => {
       try {
         const requestId = identity(raw); const cached = cache.get(requestId); if (cached) return reply(callback, cached);
-        if (!actionLimit.allow(socket.id, now())) return reply(callback, { ok: false, error: 'Please wait before trying again.', retryable: true });
+        if (!actionLimit.allow(socket.id, now())) {
+          if ((raw as { action?: unknown }).action === 'leave') logRejection('leave', socket.data.code ?? 'none', socket.data.playerId ?? socket.id, 'action rate limit', now());
+          return reply(callback, { ok: false, error: 'Please wait before trying again.', retryable: true });
+        }
         const action = (raw as { action?: unknown }).action;
         // Return home remains successful after a disconnect already removed
         // the seat. Repeating leave never affects someone else's membership.
@@ -100,14 +104,20 @@ export function createGameServer(options: { origins?: string[]; now?: () => numb
         const { room, player } = membership();
         if (action === 'start') room.start(player.id, now());
         else if (action === 'replay') room.replay(player.id);
+        else if (action === 'return-lobby') room.returnToLobby(player.id, now());
         else throw new Error('Unknown room action.');
         const value = { ok: true, snapshot: room.snapshot(now()) };
         remember(requestId, value); reply(callback, value); publish(room.code);
-      } catch (error) { reply(callback, { ok: false, error: error instanceof Error ? error.message : 'Room action failed.' }); }
+      } catch (error) {
+        if (raw && typeof raw === 'object' && (raw as { action?: unknown }).action === 'leave') logRejection('leave', socket.data.code ?? 'none', socket.data.playerId ?? socket.id, error instanceof Error ? error.message : 'invalid action', now());
+        reply(callback, { ok: false, error: error instanceof Error ? error.message : 'Room action failed.' });
+      }
     });
     socket.on('input', (input: unknown) => {
-      if (!inputLimit.allow(socket.id, now())) return;
-      try { const { room, player } = membership(); room.receive(player.id, input, now()); publish(room.code, false); } catch { /* Non-members cannot act. */ }
+      const firing = !!input && typeof input === 'object' && (input as { fire?: unknown }).fire === true;
+      if (!inputLimit.allow(socket.id, now())) { if (firing) logRejection('shot', socket.data.code ?? 'none', socket.data.playerId ?? socket.id, 'input rate limit', now()); return; }
+      try { const { room, player } = membership(); room.receive(player.id, input, now()); publish(room.code, false); }
+      catch { if (firing) logRejection('shot', socket.data.code ?? 'none', socket.data.playerId ?? socket.id, 'no active room membership', now()); }
     });
     socket.on('pingCheck', (callback: unknown) => { if (pingLimit.allow(socket.id, now()) && typeof callback === 'function') callback(); });
     socket.on('disconnect', () => {

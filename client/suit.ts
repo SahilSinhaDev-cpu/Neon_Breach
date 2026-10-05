@@ -24,6 +24,8 @@ export function batch(group:T.Group){
  for(const child of [...group.children])if(child instanceof T.Group)batch(child);
  const by=new Map<T.Material,T.Mesh[]>();for(const o of group.children)if(o instanceof T.Mesh&&!Array.isArray(o.material)){const list=by.get(o.material)??[];list.push(o);by.set(o.material,list);}
  for(const[m,objects]of by){if(objects.length<2)continue;const parts=objects.map(o=>{o.updateMatrix();return(o.geometry.index?o.geometry.toNonIndexed():o.geometry.clone()).applyMatrix4(o.matrix);});const g=mergeGeometries(parts);parts.forEach(p=>p.dispose());if(!g)continue;for(const o of objects){o.removeFromParent();o.geometry.dispose();}mesh(group,g,m);}
+ // Rigid meshes never move relative to their animated joint groups.
+ for(const o of group.children)if(o instanceof T.Mesh){o.updateMatrix();o.matrixAutoUpdate=false;}
 }
 function texture(kind:'weave'|'ceramic'|'rubber'|'visor'){
  const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d')!;

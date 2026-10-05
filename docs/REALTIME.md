@@ -1,6 +1,6 @@
 # Persistent multiplayer runtime
 
-Release: `2026-10-03-realtime-1`; protocol: `1`.
+Release: `2026-10-05-navigation-1`; protocol: `2`. Deploy frontend and backend together.
 
 The persistent runtime replaces request-by-request room simulation and Blobs writes. It reuses `server/game.ts`, `server/bots.ts`, and `shared/world.ts`, so collision, weapon damage, respawns, protection, dash, Phase Cell, scoring and tiebreaking remain the same. The HTTP backend is retained only for a staged migration of the existing Netlify website.
 
@@ -12,13 +12,13 @@ The client samples at approximately 30 Hz using volatile WebSocket messages. It 
 
 ## Protocol
 
-Socket.IO uses only WebSockets at its standard `/socket.io/` endpoint. Handshake auth includes `{protocol: 1}`. The server validates room membership against the actual socket ID for every input/action. It accepts only the configured Netlify origin and its own host origin. Non-browser connections must still obtain a valid room seat; origin checks are not a replacement for membership validation.
+Socket.IO uses only WebSockets at its standard `/socket.io/` endpoint. Handshake auth includes `{protocol: 2}`. The server validates room membership against the actual socket ID for every input/action. It accepts only the configured Netlify origin and its own host origin. Non-browser connections must still obtain a valid room seat; origin checks are not a replacement for membership validation.
 
 | Direction/event | Payload and meaning |
 | --- | --- |
 | Server `hello` | `{epoch, release, protocol}`; epoch changes after restart. |
 | Client `room` | `{requestId, action: create/join/solo, name, code?, token?}`; acknowledged with `ok`, private seat ID/token and initial public snapshot, or a clear error. |
-| Client `action` | `{requestId, action: start/replay/leave}`; start/replay require host membership. Leave is safe to repeat after a disconnected seat. |
+| Client `action` | `{requestId, action: start/replay/return-lobby/leave}`; start/replay require host membership. Leave is safe to repeat after a disconnected seat. |
 | Client `input` | `{seq, life, mx, my, yaw, pitch, fire, dash}`; no positions, damage, scores or client timestamps. |
 | Server `snapshot` | `{epoch, seq, snapshot}`; public state omits tokens, sockets, inputs and bot brains. Client rejects old epoch, old sequence and unrelated room. |
 | Server `event` | `{epoch, seq, code, event}`; confirmed shots, hits, eliminations, respawns, dash and phase feedback. |
@@ -33,7 +33,7 @@ Packet payloads are limited to 4 KiB. Per-socket token buckets limit room attemp
 
 Lobby disconnection reserves the same seat for 30 seconds, while transferring host status to the next connected human. Recovery requires the original secret token and callsign and cannot duplicate a currently connected seat. Tokens are stored in browser session storage, not sent in URLs. A page refresh closes the old WebSocket; if it has not yet closed, duplicate-seat recovery is rejected clearly.
 
-An active match disconnect is final for that contract. With at least two humans remaining it continues; with one it ends immediately. Reconnection displays Return home. After replay, the operator can join the next lobby normally. Connected players return to a fully reset lobby; the host must start the next contract. Empty rooms and stream state are removed after 30 seconds. Cleanup and deadlines run in the server rather than waiting for a browser poll. Socket.IO heartbeat uses a 2.5-second interval and 5-second timeout.
+An active match disconnect is final for that contract. With at least two humans remaining it continues; with one it ends immediately. Reconnection displays Reconnect and a confirmed Return to Landing. Personal Return to Lobby preserves a connected waiting seat and transfers host to an active human; waiting seats can recover during a live match. See [navigation behavior](NAVIGATION.md). After replay, the operator can join the next lobby normally. Connected players return to a fully reset lobby; the host must start the next contract. Empty rooms and stream state are removed after 30 seconds. Cleanup and deadlines run in the server rather than waiting for a browser poll. Socket.IO heartbeat uses a 2.5-second interval and 5-second timeout.
 
 Rooms and command caches are ephemeral. Restart/redeploy loses them. Horizontal scaling needs explicit room routing and shared authority and is not part of this implementation. Do not increase the blueprint instance count.
 

@@ -9,6 +9,8 @@
 
 /* Sound controls remain usable in short landscape viewports. */
 dialog{max-height:calc(100dvh - 28px);overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y}
+#fps-counter{position:fixed;top:calc(env(safe-area-inset-top,0px) + 3px);left:max(12px,env(safe-area-inset-left));z-index:25;pointer-events:none;padding:2px 6px;background:#071019c9;border:1px solid #73fbd32b;color:#c1ddd7;font:10px/12px monospace;font-variant-numeric:tabular-nums;min-width:56px;text-align:center;contain:layout paint}
+.in-match .hud-top{top:max(26px,calc(env(safe-area-inset-top,0px) + 24px))}
 .audio-settings{border:1px solid #91c7b32b;margin:22px 0 0;padding:14px 16px 6px}
 .audio-settings legend{font:10px monospace;letter-spacing:1.4px;color:#b3d9c5;padding:0 7px}
 .audio-levels{display:grid;grid-template-columns:1fr 1fr;gap:12px 22px}
@@ -17,4 +19,40 @@ dialog{max-height:calc(100dvh - 28px);overflow-y:auto;overscroll-behavior:contai
 .audio-settings .toggle{margin:14px 0 8px}.audio-settings .subtle{font-size:11px;line-height:1.5;margin:10px 0}
 .audio-enable{position:fixed;z-index:22;right:max(22px,env(safe-area-inset-right));bottom:max(22px,env(safe-area-inset-bottom));min-height:42px;padding:10px 15px;background:#13251fee;border:1px solid #a3ffce66;color:#cbf8de;font:10px monospace;letter-spacing:.8px;box-shadow:0 3px 18px #0005}
 .audio-enable span{margin-left:10px}.in-match .audio-enable{top:116px;left:26px;right:auto;bottom:auto}
+/* The title sequence uses the real arena capture; only its controls are HTML. */
+.intro-playing{overflow:hidden;overscroll-behavior:none}
+.intro-video{position:fixed;inset:0;z-index:120;background:#020609;opacity:1;transition:opacity .42s ease;display:grid;place-items:center;touch-action:manipulation}
+.intro-video.is-leaving{opacity:0;pointer-events:none}
+.intro-video video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;pointer-events:none}
+.intro-video-controls{position:absolute;left:max(24px,env(safe-area-inset-left));right:max(24px,env(safe-area-inset-right));bottom:max(22px,env(safe-area-inset-bottom));display:flex;justify-content:space-between;align-items:center;gap:16px}
+.intro-video-controls button{min-height:44px;background:#071219d9;border:1px solid #68d8df66;color:#d8f2ef;font:10px monospace;letter-spacing:1.2px;padding:12px 16px;backdrop-filter:blur(6px)}
+.intro-video-controls button:hover:not(:disabled){background:#13323c;color:#73f8ff;border-color:#73f8ff}
+.intro-video-controls button:disabled{opacity:.7;color:#a6bdc2;cursor:default}
+.intro-video-status{position:absolute;left:24px;right:24px;bottom:90px;color:#c1d8dc;text-align:center;font:10px monospace;letter-spacing:1.2px;text-shadow:0 2px 4px #000}
+@media(max-width:600px){.intro-video-controls{left:max(16px,env(safe-area-inset-left));right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom))}.intro-video-controls button{font-size:9px;letter-spacing:.8px;padding:11px 13px}}
+@media(prefers-reduced-motion:reduce){.intro-video{transition:none}}
+.visor-panel{background:linear-gradient(140deg,#111d27,#080f16 75%);border:1px solid #5bc4d766;border-top:2px solid #73fbd3;box-shadow:0 20px 70px #000b;padding:26px;max-width:440px;width:calc(100% - 32px);max-height:calc(100dvh - 32px);overflow:auto;color:#e9f2ed}
+.visor-panel:not([open]){display:none}
+.visor-panel::backdrop{background:#02080eb3;backdrop-filter:blur(1px)}
+.visor-panel h2{font-family:"Avenir Next Condensed","Arial Narrow",Arial,sans-serif;font-weight:600;letter-spacing:-.4px;margin:12px 0 18px}
+.visor-panel p{line-height:1.55;font-size:13px}.visor-panel .panel-top{gap:15px;font-size:9px;line-height:1.6}.visor-panel .primary,.visor-panel .secondary,.visor-panel .warning-button{width:100%;min-height:46px;margin-top:12px}
+.visor-panel .text-button{min-height:44px;color:#cce9e5;padding:8px 14px;border:1px solid #73fbd333}
+.warning-button{width:100%;min-height:44px;margin-top:12px;padding:12px 16px;border:1px solid #d6a66c88;background:#12191ce0;color:#eedac1;font:11px monospace;letter-spacing:.8px;text-align:center}
+.warning-button:hover:not(:disabled){border-color:#eec388;background:#2d251e}.nav-consequence{font:10px/1.7 monospace!important;letter-spacing:.2px;color:#96aeb5;margin:16px 0 0}
+.menu-button{position:relative;z-index:4;display:inline-flex;align-items:center;gap:12px;min-height:44px;min-width:88px;padding:10px 14px;margin-top:10px;border:1px solid #64c9d180;background:#081721df;color:#e4f8f3;font:11px monospace;letter-spacing:.8px;touch-action:manipulation}
+.menu-button span{color:#87aeb6;font-size:9px}.menu-button:hover{border-color:#73fbd3;background:#132d35}
+#join-open{width:100%;margin-top:14px}#join-panel label{margin-top:24px}#join-panel #join-back{min-height:44px;width:100%;margin-top:12px}#join-panel #room-code{width:100%}
+#copy-status{display:block;color:#94d6d0;min-height:18px;margin-top:8px}
+#how-rules{padding-left:22px;color:#c0d2d3;font-size:13px;line-height:1.7}#how-rules li{padding:6px 0 6px 3px}
+#pause-menu{margin:0;position:fixed;top:50%;left:auto;right:5vw;transform:translateY(-50%)}
+#pause-live{color:#73fbd3}#pause-life{color:#edc083;font:11px/1.6 monospace;min-height:18px}
+.confirm-actions{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}.confirm-actions .confirm-destructive{background:#b78048;color:#111820;border:1px solid #dfb27b}.confirm-actions .confirm-destructive:hover:not(:disabled){background:#d9a469}
+.touch .confirm-actions{grid-template-columns:1fr}
+#confirm-progress{font:10px/1.5 monospace;color:#8bcec8;min-height:15px}.menu-blocked #respawn{left:27%;top:48%;max-width:330px;background:#0a161ad9;pointer-events:none}
+@media(max-width:760px){.visor-panel{padding:22px}.visor-panel h2{font-size:27px}.confirm-actions{grid-template-columns:1fr}.confirm-actions .secondary{order:0}.confirm-actions .confirm-destructive{order:1}#pause-menu{left:16px;right:16px;top:54%;width:calc(100% - 32px)}.menu-button{margin-top:8px;min-height:44px;min-width:80px;padding:10px 12px}.menu-button span{display:none}.touch .match-label button{font-size:11px}.menu-blocked #respawn{top:126px;left:50%;transform:translateX(-50%);padding:10px;max-width:calc(100% - 32px)}.menu-blocked #respawn .eyebrow{display:none}.menu-blocked #respawn h2{font-size:11px;margin:0}.menu-blocked #respawn p{font-size:12px;margin:4px 0 0}}
+@media(max-height:550px) and (orientation:landscape){#pause-menu{top:50%;right:18px;left:auto;width:350px;padding:18px}#pause-menu h2{font-size:23px;margin:4px 0}#pause-menu .primary,#pause-menu .secondary,#pause-menu .warning-button{min-height:44px;margin-top:8px}#pause-menu .nav-consequence{display:none}.menu-blocked #respawn{left:24%;top:48%;max-width:280px}}
 @media(max-width:700px),(max-height:500px){.in-match .audio-enable{top:95px;left:14px;font-size:9px;min-height:35px;padding:8px 10px}.audio-settings{padding:10px 12px 4px}.audio-levels{gap:10px 16px}}
+
+/* Keep every pause action visible on a short landscape phone. */
+#pause-life:empty{display:none}
+@media(max-height:550px) and (orientation:landscape){#pause-menu .panel-top{margin-bottom:6px}#pause-menu #pause-note{font-size:12px;line-height:1.4;margin:6px 0}#pause-menu #pause-life{margin:4px 0;font-size:10px;min-height:0}#pause-menu .warning-button{padding:8px 12px}}

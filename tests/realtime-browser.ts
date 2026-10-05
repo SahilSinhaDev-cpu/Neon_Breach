@@ -50,7 +50,7 @@ try {
   await Promise.all([a.goto(server.url), b.goto(server.url)]);
   await Promise.all([a, b].map(p => p.locator('#landing-connection').filter({ hasText: 'STATION ONLINE' }).waitFor()));
   await a.locator('#callsign').fill('QAVEX'); await a.locator('#create').click(); await a.locator('#lobby').waitFor({ state: 'visible' }); code = (await a.locator('#lobby-code').textContent())!;
-  await b.locator('#callsign').fill('QANYX'); await b.locator('#room-code').fill(code); await b.locator('#join').click(); await b.locator('#lobby').waitFor({ state: 'visible' });
+  await b.locator('#callsign').fill('QANYX'); await b.locator('#join-open').click(); await b.locator('#room-code').fill(code); await b.locator('#join').click(); await b.locator('#lobby').waitFor({ state: 'visible' });
   await until(() => aw.state?.players.length === 2, 'Host did not see second player');
   idA = aw.state!.players.find(p => p.name === 'QAVEX')!.id; idB = aw.state!.players.find(p => p.name === 'QANYX')!.id;
   assert.notEqual(idA, idB); assert.equal(await b.locator('#start').isDisabled(), true);

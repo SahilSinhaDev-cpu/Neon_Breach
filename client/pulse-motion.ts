@@ -3,7 +3,7 @@ import type { Shot } from '../shared/protocol';
 
 // Cosmetic seconds/meters only. Damage, hit markers, scoring, and audio still
 // happen on receipt of the accepted server shot, before this pulse arrives.
-export const PULSE = { release: .018, speed: 200, arrivalHold: .016, residue: .16, tail: .78 } as const;
+export const PULSE = { release: .018, speed: 200, arrivalHold: .016, residue: .10, tail: .78 } as const;
 export function pulseFrame(distance: number, age: number) {
   const travel = Math.min(distance, Math.max(0, age - PULSE.release) * PULSE.speed);
   const arrival = PULSE.release + distance / PULSE.speed, impactAge = age - arrival;

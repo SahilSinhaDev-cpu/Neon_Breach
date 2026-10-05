@@ -23,7 +23,9 @@ function diskMaterial() {
 }
 type Slot={group:T.Group;head:T.Mesh;halo:T.Mesh;tail:T.Mesh;tailGlow:T.Mesh;contact:T.Group;flash:T.Mesh;ripple:T.Mesh;streaks:T.Mesh[];at:number;distance:number;from:T.Vector3;to:T.Vector3;direction:T.Vector3;kind:ImpactKind;phased:boolean;active:boolean};
 export class PulseEffects {
-  readonly capacity=16;
+  // Four players at the server's 280-ms cadence need at most twelve slots,
+  // including 100-m travel and residue. Reuse remains bounded under abuse.
+  readonly capacity=12;
   private slots:Slot[]=[];private materials:T.ShaderMaterial[]=[];
   private shape=new T.LatheGeometry([new T.Vector2(0,-.5),new T.Vector2(.4,-.32),new T.Vector2(1,-.02),new T.Vector2(.55,.28),new T.Vector2(0,.5)],8);
   private trail=new T.CylinderGeometry(.52,1,1,8,1,true);
@@ -36,7 +38,7 @@ export class PulseEffects {
       const head=mesh(group,this.shape,lightMaterial(WHITE)),halo=mesh(group,this.shape,lightMaterial(ION));
       const tail=mesh(group,this.trail,lightMaterial(WHITE,true)),tailGlow=mesh(group,this.trail,lightMaterial(ION,true));
       const flash=mesh(contact,this.plane,diskMaterial()),ripple=mesh(contact,this.plane,diskMaterial());ripple.position.z=.007;
-      const streaks=Array.from({length:3},()=>mesh(contact,this.shape,lightMaterial(WHITE)));
+      const streaks=Array.from({length:2},()=>mesh(contact,this.shape,lightMaterial(WHITE)));
       this.slots.push({group,contact,head,halo,tail,tailGlow,flash,ripple,streaks,at:-Infinity,distance:0,from:new T.Vector3(),to:new T.Vector3(),direction:new T.Vector3(),kind:'none',phased:false,active:false});
     }
   }
@@ -63,7 +65,7 @@ export class PulseEffects {
   private updateSlot(s:Slot,now:number){
     const frame=pulseFrame(s.distance,now-s.at);
     if(frame.expired){s.active=false;s.group.visible=false;return;}
-    const phase=s.phased?1.8:1,head=s.from.clone().addScaledVector(s.direction,frame.travel);
+    const phase=s.phased?1.8:1,head=s.head.position.copy(s.from).addScaledVector(s.direction,frame.travel);
     const alpha=(mesh:T.Mesh,value:number)=>{(mesh.material as T.ShaderMaterial).uniforms.opacity.value=value;mesh.visible=value>.001;};
     s.head.position.copy(head);s.halo.position.copy(head);
     s.head.scale.set(.023*phase,.17,.023*phase);s.halo.scale.set(.062*phase,.23,.062*phase);
@@ -78,7 +80,7 @@ export class PulseEffects {
     alpha(s.flash,Math.exp(-impact/.026)*.76+fade*fade*.12);
     const rip=s.ripple.material as T.ShaderMaterial;rip.uniforms.ring.value=1;rip.uniforms.radius.value=.14+Math.min(1,impact/.14)*.58;
     s.ripple.scale.setScalar(width*1.45);alpha(s.ripple,fade*fade*(s.kind==='armor'?.2:.13));
-    const count=s.kind==='metal'?3:s.kind==='armor'?2:0;
+    const count=s.kind==='metal'?2:s.kind==='armor'?1:0;
     s.streaks.forEach((m,i)=>{m.scale.set(.0025,(.025+impact*.65)*(s.kind==='armor'?.7:1),.0025);alpha(m,i<count?Math.exp(-impact/.037)*.58:0);});
   }
   update(now:number){for(const s of this.slots)if(s.active)this.updateSlot(s,now);}

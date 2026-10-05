@@ -4,6 +4,7 @@ import { Room, callsign, parseInput, randomCode, roomCode, type Player } from '.
 import { RULES } from '../../shared/world';
 import { HEARTBEAT_MS, RELEASE, type GameRequest, type HttpReply } from '../../shared/http-protocol';
 import { StorageError } from './storage';
+import { logRejection } from '../../server/rejections';
 import type { GameEvent } from '../../shared/protocol';
 
 export const STORE_NAME = 'neon-breach-rooms-v1';
@@ -53,7 +54,7 @@ export function advance(data: StoredRoom, now: number) {
       do { room.disconnect(overdue[i++].player.id, at); } while (i < overdue.length && overdue[i].at === at);
       // Equal deadlines are simultaneous. Do not choose an arbitrary player
       // merely because the disconnect loop processed their seat last.
-      if (wasPlaying && room.mode === 'multiplayer' && !room.humans().length) room.finish(null, 'Signal lost — no operators remain');
+      if (wasPlaying && room.mode === 'multiplayer' && !room.participants().some(p => !p.bot)) room.finish(null, 'Signal lost — no operators remain');
     }
   };
   // Catch-up is bounded by the last connected human's heartbeat deadline,
@@ -123,6 +124,7 @@ async function rateLimit(store: Store, identity: string, now: number) {
 export async function handleGame(request: Request, store: Store, options: { now?: () => number; generate?: () => string; ip?: string } = {}): Promise<Response> {
   if (request.method === 'GET') return response({ ok: true });
   if (request.method !== 'POST') return response({ ok: false, error: 'Use POST for game actions.' }, 405);
+  let leaveAudit: { code: string; client: string; at: number } | null = null;
   try {
     const origin = request.headers.get('origin');
     if (origin && origin !== new URL(request.url).origin) fail('Cross-site game requests are not accepted.', 403);
@@ -132,10 +134,11 @@ export async function handleGame(request: Request, store: Store, options: { now?
     let packet: GameRequest; try { packet = JSON.parse(body); } catch { return response({ ok: false, error: 'Malformed JSON.' }, 400); }
     if (!packet || typeof packet !== 'object') fail('Invalid game request.');
     const { action, client, requestId } = packet;
-    if (!['create', 'solo', 'join', 'poll', 'start', 'replay', 'leave'].includes(action)) fail('Unknown game action.');
+    if (!['create', 'solo', 'join', 'poll', 'start', 'replay', 'return-lobby', 'leave'].includes(action)) fail('Unknown game action.');
     if (typeof client !== 'string' || !/^[a-zA-Z0-9-]{16,64}$/.test(client) || typeof requestId !== 'string' || !/^[a-zA-Z0-9-]{16,64}$/.test(requestId)) fail('Invalid session identifier.');
     const clock = options.now ?? Date.now;
     const now = clock();
+    if (action === 'leave') leaveAudit = { code: typeof packet.code === 'string' && /^[A-Z0-9]{6}$/.test(packet.code) ? packet.code : 'none', client, at: now };
     if (['create', 'solo', 'join'].includes(action)) await rateLimit(store, options.ip ?? 'local', now);
     if (action === 'create' || action === 'solo') {
       const name = callsign(packet.name);
@@ -151,7 +154,10 @@ export async function handleGame(request: Request, store: Store, options: { now?
     }
     const code = roomCode(packet.code), cursor = packet.cursor ?? 0;
     if (!Number.isSafeInteger(cursor) || cursor < 0) fail('Invalid event cursor.');
-    if (packet.input !== undefined && !parseInput(packet.input)) fail('Invalid movement or aim.');
+    if (packet.input !== undefined && !parseInput(packet.input)) {
+      if (packet.input?.fire) logRejection('shot', code, client, 'invalid movement or aim', now);
+      fail('Invalid movement or aim.');
+    }
     const outcome = await mutate(store, `rooms/${code}`, data => {
       // A request can lose a CAS to one that arrived later. Recompute from the
       // committed clock so retries never roll back heartbeats or cooldowns.
@@ -167,7 +173,7 @@ export async function handleGame(request: Request, store: Store, options: { now?
         let player = [...room.players.values()].find(p => !p.bot && p.token === packet.token);
         if (action === 'join') {
           if (player) {
-            if (room.phase !== 'lobby') fail('Match already in progress. Join after the host returns to the lobby.');
+            if (room.phase !== 'lobby' && !player.inLobby) fail('Match already in progress. Join after the host returns to the lobby.');
             if (player.name !== callsign(packet.name)) fail('This seat belongs to another callsign.', 403);
             // Refresh rotates the lease, never duplicates the player or its bots.
             player.connected = true; player.socketId = client; player.leftAt = 0;
@@ -176,6 +182,9 @@ export async function handleGame(request: Request, store: Store, options: { now?
           data.seen[player.id] = time; data.activeAt = time; collect(data, room);
           return { reply: { ...result(data, room, time, data.cursor), id: player.id, token: player.token }, status: 200 };
         }
+        // Leaving an already-removed seat is idempotent and has no effect on
+        // any other operator, including after a lost acknowledgement.
+        if (!player && action === 'leave') { collect(data, room); return { reply: { ok: true }, status: 200 }; }
         if (!player) fail('Your seat is no longer available. Return home to join a lobby.', 403, 'INVALID_SEAT');
         if (!player.connected) fail('Your seat is disconnected. Return home to join a lobby.', 403, 'SEAT_DISCONNECTED');
         if (player.socketId !== client) fail('Your seat is open in another tab. Return home to join a lobby.', 403, 'SEAT_REPLACED');
@@ -189,6 +198,7 @@ export async function handleGame(request: Request, store: Store, options: { now?
         if (action === 'poll' && packet.input !== undefined && room.receive(player.id, packet.input, time)) observeInput(data, player, time);
         if (action === 'start') { room.start(player.id, time); data.simAt = time; data.inputSamples = {}; }
         if (action === 'replay') { room.replay(player.id); data.inputSamples = {}; }
+        if (action === 'return-lobby') room.returnToLobby(player.id, time);
         if (action === 'leave') room.disconnect(player.id, time, true);
         if (action !== 'poll') data.actions[player.id] = time;
         collect(data, room);
@@ -205,8 +215,10 @@ export async function handleGame(request: Request, store: Store, options: { now?
         return outcome;
       }
     });
+    if (!outcome.reply.ok && leaveAudit) logRejection('leave', leaveAudit.code, leaveAudit.client, outcome.reply.error || 'invalid action', leaveAudit.at);
     return response(outcome.reply, outcome.status);
   } catch (error) {
+    if (leaveAudit) logRejection('leave', leaveAudit.code, leaveAudit.client, error instanceof GameError ? error.message : 'storage unavailable', leaveAudit.at);
     if (error instanceof GameError) return response({ ok: false, error: error.message, errorCode: error.code }, error.status);
     // Known game-rule errors are safe plain text; infrastructure errors never
     // expose credentials, storage URLs, or stack traces to the browser.

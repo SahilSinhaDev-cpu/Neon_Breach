@@ -19,7 +19,15 @@
     "dev:http": "tsx scripts/local-preview.ts",
     "test:realtime": "tsx tests/realtime-browser.ts",
     "test:realtime-touch": "tsx tests/realtime-touch.ts",
-    "test:realtime-split": "tsx tests/realtime-split-browser.ts"
+    "test:realtime-split": "tsx tests/realtime-split-browser.ts",
+    "test:intro": "tsx tests/intro-browser.ts",
+    "test:menus": "tsx tests/menu-browser.ts",
+    "test:menus-http": "tsx tests/menu-browser.ts --http",
+    "test:bug-sweep": "tsx tests/bug-sweep-browser.ts",
+    "test:performance": "tsx tests/performance-browser.ts after",
+    "capture:intro": "tsx scripts/capture-intro.ts",
+    "capture:intro-audio": "tsx scripts/intro-audio.ts",
+    "encode:intro": "node scripts/encode-intro.mjs"
   },
   "dependencies": {
     "@netlify/blobs": "^11.1.3",

@@ -1,0 +1,9 @@
+node_modules
+dist
+artifacts
+.git
+.netlify
+.env*
+*.zip
+*.log
+.DS_Store

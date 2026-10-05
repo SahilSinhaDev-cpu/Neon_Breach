@@ -22,7 +22,7 @@ All times below are relative to receipt of the accepted server shot.
 | Muzzle tail | A dim aperture/sheath residue remains briefly, ending at 125 ms. Core/channel illumination returns to idle by 160 ms. |
 | Pulse flight | Starts at 18 ms and travels at a constant cosmetic 200 m/s from the displayed muzzle toward the server's contact point. |
 | Arrival glint | The head retains a short 16-ms fade at the endpoint so close shots remain visible across ordinary render frames. |
-| Impact | Begins at visual arrival and fades completely within 160 ms. |
+| Impact | Begins at visual arrival and fades completely within 100 ms. |
 
 Visual arrival is `18 ms + (visual launch-to-contact distance / 200 m/s)`. The path length can differ from the eye ray because the pulse starts near the weapon muzzle. This timing never controls whether a shot hits. Even at long range, the server damage and hit marker can appear before the cosmetic impact flash.
 
@@ -32,8 +32,8 @@ All surfaces receive a compact flash, a short residue and a subtle expanding rin
 
 | Contact | Appearance |
 | --- | --- |
-| Operator armor | Cool violet pressure flash (`#b6c5ff`), a slightly stronger ring and two short deterministic radial energy lobes. |
-| Station metal | Cyan flash, restrained ring and three short radial lobes. |
+| Operator armor | Cool violet pressure flash (`#b6c5ff`), a slightly stronger ring and one short deterministic radial energy lobe. |
+| Station metal | Cyan flash, restrained ring and two short radial lobes. |
 | Composite cover | Dull mint thermal disk (`#b0cfbf`), a quieter ring and no radial lobes. |
 
 Geometry contacts use the shared arena boxes to identify the surface and its face normal. Operator impacts use the server's simple player hit box and incoming direction. They do not raycast individual armor plates. A contact can therefore appear slightly in front of a visible suit surface; this preserves the existing fair hit volume rather than changing combat for decorative geometry.
@@ -44,9 +44,9 @@ Phased shots retain the existing more revealing firing rule: the head, sheath an
 
 ## Resource budget
 
-`PulseEffects` allocates a fixed pool of 16 slots with three shared geometries and 144 materials. Each slot holds the pulse head, sheath, two tail meshes and the small contact effect, including up to three deterministic lobes. Invisible parts do not draw. Effects expire and reuse slots instead of creating and destroying geometry on every shot. If all slots are occupied, the oldest cosmetic effect is reused; the accepted shot and its gameplay result are unaffected.
+`PulseEffects` allocates a fixed pool of 12 slots with three shared geometries and 96 materials. Each slot holds the pulse head, sheath, two tail meshes and the small contact effect, including up to two deterministic lobes. This covers four players firing at the server's 280-ms minimum even with a 100-meter cosmetic path and residue. Invisible parts do not draw. Effects expire and reuse slots instead of creating and destroying geometry on every shot. If all slots are occupied, the oldest cosmetic effect is reused; the accepted shot and its gameplay result are unaffected.
 
-Clearing the pool hides and releases its active slots. Disposal removes its scene objects and disposes all three owned geometries and 144 materials. The rifle's separate static muzzle shapes also reuse their geometry and materials.
+Clearing the pool hides and releases its active slots. Disposal removes its scene objects and disposes all three owned geometries and 96 materials. The rifle's separate static muzzle shapes also reuse their geometry and materials. These budgets were reduced in the 5 October client-performance revision; the original 2 October measurements below describe the previous 16-slot version. See [PERFORMANCE.md](PERFORMANCE.md) for current results.
 
 ## Verification
 
@@ -55,8 +55,8 @@ Use Node 22 or newer, install dependencies and build production assets before th
 ```sh
 npm ci
 npm run build
-npm run test:vfx -- --studio
-npm run test:vfx
+node --import tsx tests/vfx-browser.ts --studio
+node --import tsx tests/vfx-browser.ts
 ```
 
 The test uses the local Chrome executable on macOS with the Metal renderer. `CHROME_PATH` can select a different Chrome executable, but the current live performance assertion expects Metal. The studio route and diagnostic objects exist only in the test server; they are not shipped in the production game.

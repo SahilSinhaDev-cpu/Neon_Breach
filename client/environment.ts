@@ -33,7 +33,7 @@ export class ShatteredRelay {
         if (b.z < -20) {
           for (const side of [-1, 1]) for (let i = 0; i < 3; i++) this.box(4, 6, 1, side * (10 + i * 4), 3, -20.5, wall, group);
           this.box(16, 1.25, 1, 0, 0.625, -20.5, frame, group); this.box(16, 1.15, 1, 0, 5.425, -20.5, frame, group);
-          const glass = new T.MeshPhysicalMaterial({ color: '#8ba8b1', metalness: 0.15, roughness: 0.3, transparent: true, opacity: 0.13, depthWrite: false, side: T.DoubleSide });
+          const glass = new T.MeshBasicMaterial({ color: '#8ba8b1', transparent: true, opacity: 0.13, depthWrite: false, side: T.DoubleSide });
           this.plane(16, 3.6, 0, 3.05, -20, glass, 0, 0, 0, group).name = 'Armored glass: blocks movement and shots';
         } else if (Math.abs(b.z) > 20) {
           for (let i = -4; i <= 4; i++) this.box(40 / 9, 6, 1, i * 40 / 9, 3, b.z, wall, group);
@@ -135,10 +135,22 @@ export class ShatteredRelay {
     for (let i = 0; i < 10; i++) { const z = -11.2 + i * 0.12, y = 3.88 + Math.sin(i * 4.2) * 0.14; arcPoints.push(19.27, y, z, 19.27, 3.88 + Math.sin((i + 1) * 4.2) * 0.14, z + 0.12); }
     const arcGeometry = new T.BufferGeometry(); arcGeometry.setAttribute('position', new T.Float32BufferAttribute(arcPoints, 3));
     this.arc = new T.LineSegments(arcGeometry, new T.LineBasicMaterial({ color: '#ffe1a9', transparent: true, opacity: 0.7, blending: T.AdditiveBlending, depthWrite: false })); this.arc.userData.decorative = true; this.root.add(this.arc);
-    const sparks = new Float32Array(18 * 3); const sparkGeometry = new T.BufferGeometry(); sparkGeometry.setAttribute('position', new T.BufferAttribute(sparks, 3));
+    const sparks = new Float32Array(12 * 3); const sparkGeometry = new T.BufferGeometry(); sparkGeometry.setAttribute('position', new T.BufferAttribute(sparks, 3));
     this.sparks = new T.Points(sparkGeometry, new T.PointsMaterial({ color: '#d7aa72', size: 0.025, transparent: true, opacity: 0.47, depthWrite: false })); this.sparks.userData.decorative = true; this.root.add(this.sparks);
     this.exteriorFlash = this.space();
     this.mergeDecorations();
+    // Panels inside each pressure shell share one material/draw instead of one
+    // draw per panel. The original shell group still maps to the shared collider.
+    for (const shell of this.collisionVisuals) if (shell instanceof T.Group) this.mergeDecorations(shell);
+    this.root.updateMatrixWorld(true);
+    this.root.traverse(o => {
+      // Only exterior debris changes transforms. Paint, shells and fixtures
+      // keep their baked world matrices, including invisible ceiling details.
+      let parent: T.Object3D | null = o;
+      while (parent && !this.debris.includes(parent as T.Group)) parent = parent.parent;
+      if (!parent) { o.matrixAutoUpdate = false; o.matrixWorldAutoUpdate = false; }
+      else if (o instanceof T.Mesh) { o.updateMatrix(); o.matrixAutoUpdate = false; }
+    });
   }
   private box(w: number, h: number, d: number, x: number, y: number, z: number, mat: T.Material, parent: T.Object3D = this.decorative) {
     const m = new T.Mesh(new T.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); parent.add(m); return m;
@@ -147,7 +159,7 @@ export class ShatteredRelay {
     const m = new T.Mesh(new T.PlaneGeometry(w, h), mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); parent.add(m); return m;
   }
   private sign(title: string, subtitle: string, w: number, h: number, x: number, y: number, z: number, yaw: number, color: string) {
-    return this.plane(w, h, x, y, z, new T.MeshStandardMaterial({ map: signTexture(title, subtitle, color), roughness: 0.9, metalness: 0.1, emissive: '#263634', emissiveIntensity: 0.25, side: T.DoubleSide }), 0, yaw);
+    return this.plane(w, h, x, y, z, new T.MeshBasicMaterial({ map: signTexture(title, subtitle, color), side: T.DoubleSide }), 0, yaw);
   }
   private floorStrip(w: number, d: number, x: number, z: number, material: T.Material) { return this.plane(w, d, x, 0.006, z, material, -Math.PI / 2); }
   private floorText(text: string, w: number, d: number, x: number, z: number, yaw: number, color: string) {
@@ -194,8 +206,8 @@ export class ShatteredRelay {
     this.sign('SERVICE', 'LOCKED', 1.28, 0.32, 12.5, 2.48, 19.973, Math.PI, '#a4b7b3');
   }
   private space() {
-    const planetMat = new T.MeshStandardMaterial({ map: planetTexture(), color: '#9cbdc9', roughness: 1, metalness: 0, fog: false, envMapIntensity: 0.15 });
-    const planet = new T.Mesh(new T.SphereGeometry(12, 40, 28), planetMat); planet.position.set(-6, 7, -65); planet.rotation.z = 0.22; this.exterior.add(planet);
+    const planetMat = new T.MeshBasicMaterial({ map: planetTexture(), color: '#7995a1', fog: false });
+    const planet = new T.Mesh(new T.SphereGeometry(12, 24, 16), planetMat); planet.position.set(-6, 7, -65); planet.rotation.z = 0.22; this.exterior.add(planet);
     const atmosphere = new T.Mesh(new T.SphereGeometry(12.16, 28, 20), new T.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: { tint: { value: new T.Color('#6d9fab') } }, vertexShader: 'varying vec3 n; varying vec3 v; void main(){vec4 p=modelViewMatrix*vec4(position,1.); n=normalize(normalMatrix*normal); v=normalize(-p.xyz); gl_Position=projectionMatrix*p;}', fragmentShader: 'uniform vec3 tint; varying vec3 n; varying vec3 v; void main(){float rim=pow(1.-max(0.,dot(normalize(n),normalize(v))),3.); gl_FragColor=vec4(tint,rim*.17);}' })); atmosphere.position.copy(planet.position); this.exterior.add(atmosphere);
     const points: number[] = []; for (let i = 0; i < 100; i++) points.push(Math.sin(i * 127.1) * 85, -13 + (Math.cos(i * 31.7) + 1) * 40, -110 - (i % 9));
     const stars = new T.BufferGeometry(); stars.setAttribute('position', new T.Float32BufferAttribute(points, 3)); this.exterior.add(new T.Points(stars, new T.PointsMaterial({ color: '#8b9dab', size: 0.15, fog: false, sizeAttenuation: true })));
@@ -207,14 +219,15 @@ export class ShatteredRelay {
     for (let i = 0; i < 6; i++) { const piece = new T.Group(); piece.position.set(-17 + i * 7.2, 0.7 + (i % 3) * 2.8, -29 - (i % 4) * 7); piece.rotation.set(i * 0.7, i * 1.3, i * 0.8); this.box(0.6 + (i % 2), 0.23, 0.9, 0, 0, 0, face, piece); this.box(0.1, 0.9, 0.12, 0.3, 0.2, 0, hull, piece); this.debris.push(piece); this.exterior.add(piece); }
     const flash = this.box(0.22, 0.22, 0.22, 22, 5.4, -48, new T.MeshBasicMaterial({ color: '#eab989', fog: false, transparent: true, opacity: 0.4 }), this.exterior); flash.visible = false; return flash;
   }
-  private mergeDecorations() {
-    this.decorative.updateMatrixWorld(true); const groups = new Map<T.Material, T.Mesh[]>();
-    this.decorative.traverse(object => { if (object instanceof T.Mesh && !Array.isArray(object.material)) { const list = groups.get(object.material) ?? []; list.push(object); groups.set(object.material, list); } });
+  private mergeDecorations(parent: T.Object3D = this.decorative) {
+    parent.updateMatrixWorld(true); const groups = new Map<T.Material, T.Mesh[]>();
+    parent.traverse(object => { if (object instanceof T.Mesh && !Array.isArray(object.material)) { const list = groups.get(object.material) ?? []; list.push(object); groups.set(object.material, list); } });
+    const inverse = parent.matrixWorld.clone().invert();
     for (const [mat, meshes] of groups) {
       if (meshes.length < 2) continue;
-      const parts = meshes.map(m => { const g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone(); return g.applyMatrix4(m.matrixWorld); });
+      const parts = meshes.map(m => { const g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone(); return g.applyMatrix4(inverse.clone().multiply(m.matrixWorld)); });
       const merged = mergeGeometries(parts); parts.forEach(g => g.dispose()); if (!merged) continue;
-      meshes.forEach(m => { m.removeFromParent(); m.geometry.dispose(); }); const result = new T.Mesh(merged, mat); result.userData.decorative = true; this.decorative.add(result);
+      meshes.forEach(m => { m.removeFromParent(); m.geometry.dispose(); }); const result = new T.Mesh(merged, mat); result.userData.decorative = parent === this.decorative; parent.add(result);
     }
   }
   setReduced(value: boolean) { this.reduced = value; this.sparks.visible = !value; this.debris.forEach((p, i) => p.visible = !value || i < 2); }

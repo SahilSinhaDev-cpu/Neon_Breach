@@ -1,6 +1,6 @@
 import type { Reply, Snapshot, GameEvent } from './protocol';
-export const REALTIME_VERSION = 1;
-export const REALTIME_RELEASE = '2026-10-03-realtime-1';
+export const REALTIME_VERSION = 2;
+export const REALTIME_RELEASE = '2026-10-05-navigation-1';
 export const INPUT_INTERVAL_MS = 1000 / 30;
 export type RealtimeReply = Reply & { retryable?: boolean; errorCode?: string; retryAfterMs?: number };
 export type SnapshotPacket = { epoch: string; seq: number; snapshot: Snapshot };

@@ -25,6 +25,24 @@ test('real-time config rejects credentials, non-TLS public URLs and invalid tran
   assert.throws(() => parseGameConfig({ transport: 'fake', serverUrl: null }));
 });
 
+test('both production frontend origins can share the same room on the backend', async () => {
+  const f = await fixture();
+  const sockets: Socket[] = [];
+  try {
+    for (const Origin of ['https://neonbreach977.vercel.app', 'https://neonbreach977.netlify.app']) {
+      const socket = io(f.url, { transports: ['websocket'], forceNew: true, reconnection: false, auth: { protocol: REALTIME_VERSION }, extraHeaders: { Origin } });
+      sockets.push(socket);
+      await new Promise<void>((resolve, reject) => { socket.once('connect', resolve); socket.once('connect_error', reject); });
+    }
+    const created = await request(sockets[0], 'room', { action: 'create', name: 'VEX' });
+    assert.ok(created.ok);
+    const joined = await request(sockets[1], 'room', { action: 'join', name: 'NYX', code: created.snapshot!.code });
+    assert.ok(joined.ok);
+    assert.equal(joined.snapshot!.players.filter(p => p.connected).length, 2);
+    assert.ok((await request(sockets[0], 'action', { action: 'start' })).ok);
+  } finally { sockets.forEach(socket => socket.disconnect()); await f.close(); }
+});
+
 test('room commands are idempotent, seats recover, bad origins/protocols and nonmembers are rejected', async () => {
   const f = await fixture();
   try {
@@ -92,7 +110,8 @@ test('production real-time client recovers a lobby, never buffers offline inputs
     socket.conn.close(); await recovered;
     assert.equal((await client.request('room', { action: 'join', name: 'VEX', code: room.code, token: joined.token })).id, joined.id);
     assert.equal((await client.request('action', 'start')).ok, true); await pause(200);
-    const home = await client.request('action', 'leave'); assert.ok(home.ok); const ack = room.players.get(joined.id!)!.ack;
-    await pause(150); assert.equal(room.players.get(joined.id!)!.ack, ack); assert.equal(room.phase, 'ended');
+    const oldPlayer = room.players.get(joined.id!)!, ack = oldPlayer.ack;
+    const home = await client.request('action', 'leave'); assert.ok(home.ok); assert.equal(room.players.has(joined.id!), false);
+    await pause(150); assert.equal(oldPlayer.ack, ack); assert.equal(room.phase, 'ended');
   } finally { client.close(); await f.close(); }
 });

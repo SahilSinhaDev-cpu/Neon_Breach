@@ -35,6 +35,7 @@ export class OperatorModel{
  private surfaceState:{material:T.Material;opacity:number;transparent:boolean;depthWrite:boolean}[]=[];
  private stride=0;private speed=0;private recoil=0;private hitAt=-100;private dashTime=-100;private downAt=-100;private lastHP=100;private life=-1;private lastDash=0;private turning=false;private phased=false;
  private feet:V3[]=[];private footprint:T.Mesh;
+ private lastOpacity=-1;
  constructor(color:string,variant=0){
   const m=createSuitMaterials(color);this.root.name='PRESSURE / 07 operator';this.root.add(this.body);this.body.name='Pelvis and visual rig';
   // Pelvis and fitted lumbar seal link the legs to a tapered rib cage.
@@ -151,7 +152,9 @@ export class OperatorModel{
    this.feet.push([foot[0],foot[1]+this.body.position.y-.138,foot[2]]);
   }
   this.rifle.root.rotation.set(this.recoil*.012,0,0);this.rifle.root.position.z=-.135+this.recoil*.008;
-  this.arms.updateMatrixWorld(true);this.rifle.root.updateMatrix();
+  // Wrist IK uses the rifle's local matrix. Let the renderer update the full
+  // hierarchy once, rather than duplicating its world-transform pass here.
+  this.rifle.root.updateMatrix();
   for(const[i,arm]of this.armRig.entries()){
    const w=i===0?RIFLE_WRISTS.dominant:RIFLE_WRISTS.support,hand=new T.Vector3(...w).applyMatrix4(this.rifle.root.matrix),target=hand.toArray()as V3;
    const shoulder:V3=[arm.side*.235,0,.004],elbow=bendJoint(shoulder,target,arm.upperLength,arm.lowerLength,[arm.side*.14,-1,.18]);
@@ -161,7 +164,10 @@ export class OperatorModel{
   this.rifle.update(time);this.recoil=Math.max(0,this.recoil-dt*9);
   this.shield.visible=alive&&protectedNow;this.shield.rotation.y+=dt*.4;this.footprint.visible=alive;
   const opacity=fade*(phased?.4:1);
-  for(const base of this.surfaceState){const m=base.material,transparent=opacity<.999||base.transparent;if(m.transparent!==transparent){m.transparent=transparent;m.needsUpdate=true;}m.opacity=base.opacity*opacity;m.depthWrite=opacity<.999?false:base.depthWrite;}
+  if(opacity!==this.lastOpacity){
+   for(const base of this.surfaceState){const m=base.material,transparent=opacity<.999||base.transparent;if(m.transparent!==transparent){m.transparent=transparent;m.needsUpdate=true;}m.opacity=base.opacity*opacity;m.depthWrite=opacity<.999?false:base.depthWrite;}
+   this.lastOpacity=opacity;
+  }
   this.phased=phased;
  }
  get poseState(){return{speed:this.speed,stride:this.stride,feet:this.feet,phased:this.phased,alive:this.lastHP>0,life:this.life,rootYaw:this.root.rotation.y};}

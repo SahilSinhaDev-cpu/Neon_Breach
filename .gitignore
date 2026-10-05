@@ -8,4 +8,5 @@ artifacts/
 .DS_Store
 neon-breach-source.tar.gz
 .netlify/
+.vercel/
 netlify-ready-game.zip

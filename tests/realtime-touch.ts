@@ -13,13 +13,16 @@ try {
   const desktop = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const a = await desktop.newPage(), m = await mobile.newPage();
+  // Intro playback has its own full-media/failure suite. This regression keeps
+  // both independent clients focused on the existing authoritative gameplay.
+  await Promise.all([a, m].map(page => page.addInitScript({ content: "sessionStorage.setItem('nb-intro-seen-v1', '1');" })));
   let state: Snapshot | null = null;
   for (const page of [a, m]) { page.on('pageerror', e => errors.push(e.message)); page.on('websocket', socket => socket.on('framereceived', ({ payload }) => { if (typeof payload === 'string' && payload.startsWith('42')) { try { const [event, packet] = JSON.parse(payload.slice(2)); if (event === 'snapshot') state = packet.snapshot; } catch {} } })); }
   await Promise.all([a.goto(server.url), m.goto(server.url)]);
   await Promise.all([a, m].map(p => p.locator('#landing-connection').filter({ hasText: 'STATION ONLINE' }).waitFor()));
   assert.equal(await m.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true); check('Mobile portrait landing fits the screen');
   await a.locator('#callsign').fill('DESKTOP'); await a.locator('#create').click(); await a.locator('#lobby').waitFor({ state: 'visible' }); const code = (await a.locator('#lobby-code').textContent())!;
-  await m.locator('#callsign').fill('TOUCH'); await m.locator('#room-code').fill(code); await m.locator('#join').click(); await m.locator('#lobby').waitFor({ state: 'visible' });
+  await m.locator('#callsign').fill('TOUCH'); await m.locator('#join-open').click(); await m.locator('#room-code').fill(code); await m.locator('#join').click(); await m.locator('#lobby').waitFor({ state: 'visible' });
   await m.setViewportSize({ width: 844, height: 390 }); await pause(600); await a.locator('#start').click(); await m.locator('#hud').waitFor({ state: 'visible' }); await m.bringToFront();
   const p = (await server.blobs.read(code)).room.players.find(p => p.name === 'TOUCH')!, id = p.id;
   const cdp = await mobile.newCDPSession(m);
@@ -39,8 +42,8 @@ try {
   const dash = (await m.locator('#dash-touch').boundingBox())!; await touch('touchStart', dash.x + dash.width / 2, dash.y + dash.height / 2); await touch('touchEnd'); await pause(250);
   const dashed = (await server.blobs.read(code)).room.players.find(p => p.id === id)!; assert.ok(dashed.z >= -19.58 && dashed.z < -19.4); check('Dedicated touch Dash stops at the arena wall and shows cooldown');
   await mkdir('artifacts/realtime', { recursive: true }); await m.screenshot({ path: 'artifacts/realtime/mobile.png' });
-  await a.bringToFront(); await a.keyboard.press('Escape'); await a.locator('#match-settings').click(); await a.locator('#leave-match').click(); await m.locator('#results').waitFor({ state: 'visible' }); assert.equal(await m.locator('#winner').textContent(), 'TOUCH'); check('Explicit leave transfers host and awards the last connected player');
-  await m.locator('#leave-results').click(); await m.locator('#landing').waitFor({ state: 'visible' }); await m.locator('#solo').click(); await m.locator('#lobby').waitFor({ state: 'visible' });
+  await a.bringToFront(); await a.keyboard.press('Escape'); await a.locator('#leave-match').click(); await a.locator('#confirm-accept').click(); await m.locator('#results').waitFor({ state: 'visible' }); assert.equal(await m.locator('#winner').textContent(), 'TOUCH'); check('Explicit leave transfers host and awards the last connected player');
+  await m.locator('#leave-results').click(); await m.locator('#confirm-accept').click(); await m.locator('#landing').waitFor({ state: 'visible' }); await m.locator('#solo').click(); await m.locator('#lobby').waitFor({ state: 'visible' });
   assert.equal(await m.locator('#roster .bot-tag').count(), 3); await m.locator('#start').click(); await m.locator('#hud').waitFor({ state: 'visible' }); await pause(2500);
   const data = await server.blobs.read((state as unknown as Snapshot).code); assert.equal(data.room.mode, 'solo'); assert.equal(data.room.phase, 'playing'); assert.equal(data.room.brains.length, 3); assert.ok(data.room.players.filter(p => p.bot).every(p => p.ack > 30));
   check('Solo starts with three labeled bots; authoritative bots move on the persistent simulation');

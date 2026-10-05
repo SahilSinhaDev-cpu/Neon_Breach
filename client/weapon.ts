@@ -28,6 +28,7 @@ function batch(group: T.Group) {
     const merged = mergeGeometries(parts); parts.forEach(g => g.dispose()); if (!merged) continue;
     objects.forEach(o => { o.removeFromParent(); o.geometry.dispose(); }); const m = new T.Mesh(merged, mat); m.name = 'Batched rifle surface'; group.add(m);
   }
+  group.traverse(o => { if (o instanceof T.Mesh) { o.updateMatrix(); o.matrixAutoUpdate = false; } });
 }
 
 function finishTextures() {

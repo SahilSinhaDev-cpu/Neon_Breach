@@ -45,13 +45,13 @@ test('the default fetch implementation is called with the global receiver requir
   finally { connection.close(); globalThis.fetch = original; }
 });
 
-test('leaving discards an in-flight old snapshot and detaches even when the leave request fails', async () => {
+test('a failed leave preserves the server seat and snapshots until a later leave is acknowledged', async () => {
   const polling = deferred<void>(), response = deferred<Response>(), health = deferred<void>();
-  const observed: Snapshot[] = [];
+  const observed: Snapshot[] = []; let available = false;
   const fixture = transport(packet => {
     if (!packet) { health.resolve(); return json({ ok: true }); }
     if (packet.action === 'create') return json(roomReply());
-    if (packet.action === 'leave') return json({ ok: false, error: 'Unavailable' }, 503);
+    if (packet.action === 'leave') return available ? json({ ok: true }) : json({ ok: false, error: 'Unavailable' }, 503);
     polling.resolve(); return response.promise;
   });
   const { connection } = fixture;
@@ -60,11 +60,10 @@ test('leaving discards an in-flight old snapshot and detaches even when the leav
     await create(connection); connection.connect(); await polling.promise;
     const leaving = connection.request('action', 'leave');
     response.resolve(json({ ok: true, snapshot: snapshot(), cursor: 1 }));
-    assert.equal((await leaving).ok, false);
-    await health.promise;
-    assert.deepEqual(observed, []);
-    assert.equal(fixture.packets.filter(p => p?.action === 'poll').length, 1);
-    assert.equal(fixture.maximum(), 1);
+    assert.equal((await leaving).ok, false); assert.ok(observed.length >= 1);
+    assert.equal(fixture.packets.filter(p => p?.action === 'leave').length, 2);
+    available = true; assert.equal((await connection.request('action', 'leave')).ok, true);
+    const count = observed.length; await health.promise; assert.equal(observed.length, count); assert.equal(fixture.maximum(), 1);
   } finally { connection.close(); }
 });
 
@@ -241,5 +240,38 @@ test('leaving while a room response is pending cancels that response instead of 
     release.resolve(json(roomReply())); assert.equal((await joining).ok, false);
     assert.equal((await leaving).ok, true);
     assert.equal(fixture.packets.find(packet => packet?.action === 'leave')?.token, 'seat-token');
+  } finally { fixture.connection.close(); }
+});
+test('a refreshed personal lobby seat polls without movement and receives the host replay snapshot', async () => {
+  const waiting = snapshot('playing'); waiting.players[0].inLobby = true;
+  const done = deferred<void>(); let samples = 0, polls = 0;
+  const fixture = transport(packet => {
+    if (packet?.action === 'join') return json({ ...roomReply(), snapshot: waiting });
+    assert.equal(packet?.action, 'poll'); assert.equal(packet?.input, undefined);
+    if (++polls === 2) done.resolve();
+    return json({ ok: true, snapshot: polls === 1 ? waiting : snapshot('lobby') });
+  });
+  const observed: Snapshot[] = [];
+  try {
+    fixture.connection.sample = () => { samples++; return { seq: 0, life: 0, mx: 0, my: 0, yaw: 0, pitch: 0, fire: false, dash: false }; };
+    fixture.connection.on('snapshot', value => observed.push(value));
+    assert.ok((await fixture.connection.request('room', { action: 'join', name: 'VEX' })).ok);
+    fixture.connection.connect(); await done.promise; await pause(0);
+    assert.equal(samples, 0); assert.equal(observed.at(-1)?.phase, 'lobby'); assert.equal(fixture.maximum(), 1);
+  } finally { fixture.connection.close(); }
+});
+test('pausing cancels a dash retry after a rejected HTTP poll and sends only neutral input', async () => {
+  let active = true, polls = 0; const done = deferred<void>();
+  const fixture = transport(packet => {
+    if (packet?.action === 'create') return json(roomReply());
+    if (++polls === 1) { assert.ok(packet?.input?.dash); active = false; return json({ ok: false, error: 'busy' }, 429); }
+    assert.deepEqual([packet?.input?.dash, packet?.input?.fire, packet?.input?.mx, packet?.input?.my], [false, false, 0, 0]); done.resolve();
+    return json({ ok: true, snapshot: snapshot() });
+  });
+  try {
+    fixture.connection.canAct = () => active;
+    fixture.connection.sample = () => ({ seq: polls, life: 1, mx: active ? 1 : 0, my: 0, yaw: 0, pitch: 0, fire: false, dash: active });
+    await create(fixture.connection); fixture.connection.connect(); await done.promise;
+    assert.equal(fixture.maximum(), 1);
   } finally { fixture.connection.close(); }
 });
