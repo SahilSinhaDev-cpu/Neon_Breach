@@ -29,7 +29,7 @@ test('both production frontend origins can share the same room on the backend', 
   const f = await fixture();
   const sockets: Socket[] = [];
   try {
-    for (const Origin of ['https://neonbreach977.vercel.app', 'https://neonbreach977.netlify.app']) {
+    for (const Origin of ['https://neonbreach977-d7ii.vercel.app', 'https://neonbreach977.netlify.app']) {
       const socket = io(f.url, { transports: ['websocket'], forceNew: true, reconnection: false, auth: { protocol: REALTIME_VERSION }, extraHeaders: { Origin } });
       sockets.push(socket);
       await new Promise<void>((resolve, reject) => { socket.once('connect', resolve); socket.once('connect_error', reject); });

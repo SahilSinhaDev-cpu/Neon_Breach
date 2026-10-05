@@ -13,7 +13,7 @@ export function createGameServer(options: { origins?: string[]; now?: () => numb
   const app = express(), http = createServer(app), epoch = randomUUID();
   const startWall = Date.now(), startMono = performance.now();
   const now = options.now ?? (() => startWall + performance.now() - startMono);
-  const origins = new Set(options.origins ?? ['https://neonbreach977.netlify.app', 'https://neonbreach977.vercel.app']);
+  const origins = new Set(options.origins ?? ['https://neonbreach977.netlify.app', 'https://neonbreach977.vercel.app', 'https://neonbreach977-d7ii.vercel.app']);
   function allowed(origin: string | undefined, host: string | undefined) {
     if (!origin) return true; // Non-browser clients still need a private seat token.
     try { return origins.has(origin) || new URL(origin).host === host; } catch { return false; }

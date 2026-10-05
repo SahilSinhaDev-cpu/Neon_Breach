@@ -1,12 +1,14 @@
 # Backend release preparation — 5 October 2026
 
-The requested production frontend is `https://neonbreach977.vercel.app/`. An HTTP check returned Vercel `404 NOT_FOUND` before any game code loaded. The current source builds to `dist/client`; the new root `vercel.json` explicitly selects that output directory, Vite, and the production build. The actual dashboard settings and deployment files remain uninspected without Vercel account access, so the output-directory diagnosis is an inference, not a confirmed dashboard finding.
+The original requested frontend was `https://neonbreach977.vercel.app/`. An HTTP check returned Vercel `404 NOT_FOUND` before any game code loaded. The current source builds to `dist/client`; root `vercel.json` explicitly selects that output directory, Vite, and the production build. The actual dashboard settings and deployment files remain uninspected without Vercel account access, so the output-directory diagnosis is an inference, not a confirmed dashboard finding.
+
+The subsequently published frontend is `https://neonbreach977-d7ii.vercel.app/`. Its public `game-config.json` returned HTTP 200 with `{"transport":"http","serverUrl":null}`. Its `/.netlify/functions/game` and `/healthz` both returned HTTP 404. The game assets load, but this deployment has no configured persistent backend and cannot use the Netlify-only Function. Its displayed connection failure is therefore expected until the backend is deployed and the frontend configuration is switched to the verified HTTPS server origin.
 
 ## Backend to deploy
 
 `render.yaml` defines one free Node service in Singapore, one instance, production build/start commands and `/healthz`. `.node-version` pins the tested Node 22.20.0 runtime. No database or user-defined environment variables are necessary. The process keeps authoritative rooms in memory; multiple instances would split rooms, and redeploys/restarts end current matches.
 
-The server accepts the exact Vercel and Netlify production origins and its own origin. It does not allow arbitrary Vercel preview domains. Unrelated origins remain rejected. The backend also serves the complete frontend directly, selecting same-origin WebSockets automatically.
+The server accepts `https://neonbreach977-d7ii.vercel.app`, the original `https://neonbreach977.vercel.app`, `https://neonbreach977.netlify.app`, and its own origin. It does not allow arbitrary Vercel preview domains. Unrelated origins remain rejected. The backend also serves the complete frontend directly, selecting same-origin WebSockets automatically. The release smoke test uses the new active Vercel origin and the Netlify origin.
 
 ## Account action still required
 

@@ -37,7 +37,7 @@ This release restores a **persistent Node/Socket.IO game server**, while the web
 
 The measured old Netlify responses had a 525 ms median, compared with 13 ms locally. See [the diagnosis](docs/NETLIFY-LATENCY.md). A persistent game server removes those per-input function/storage operations; internet latency still depends on server region and players' networks.
 
-The Vercel frontend at `neonbreach977.vercel.app` is also explicitly allowed by the backend. Root `vercel.json` selects Vite and publishes `dist/client`, where the compiled `index.html` actually lives. This corrects the source deployment configuration; the hosted 404 cannot be confirmed fixed until the updated source is redeployed in the Vercel account. See [the backend deployment status and checks](docs/DEPLOYMENT.md).
+The backend explicitly allows the current Vercel frontend at `neonbreach977-d7ii.vercel.app` and the original `neonbreach977.vercel.app` domain. Root `vercel.json` selects Vite and publishes `dist/client`, where the compiled `index.html` actually lives. The new frontend loads, but its HTTP compatibility configuration cannot connect to a Netlify-only Function on Vercel. A verified deployed backend and the WebSocket configuration switch are still required. See [the backend deployment status and checks](docs/DEPLOYMENT.md).
 
 [Deploy the prepared backend to Render](https://render.com/deploy?repo=https://github.com/SahilSinhaDev-cpu/Neon_Breach)
 

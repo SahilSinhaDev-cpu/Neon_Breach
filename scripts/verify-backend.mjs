@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { io } from 'socket.io-client';
 
-export const FRONTEND_ORIGINS = ['https://neonbreach977.vercel.app', 'https://neonbreach977.netlify.app'];
+export const FRONTEND_ORIGINS = ['https://neonbreach977-d7ii.vercel.app', 'https://neonbreach977.netlify.app'];
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const command = (socket, event, data) => new Promise((resolve, reject) => socket.timeout(5000).emit(event, { requestId: randomUUID(), ...data }, (error, reply) => error ? reject(error) : resolve(reply)));
 
